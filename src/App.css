@@ -1,0 +1,15 @@
+/* Remove default centering and background styles to avoid conflicts with Tailwind or your custom layout */
+
+body, #root, .App {
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  background: none;
+}
+
+.App {
+  /* No text-align or flex centering here, let your component handle layout */
+}
+
+/* Remove .App-header and .App-logo styles if not used */
