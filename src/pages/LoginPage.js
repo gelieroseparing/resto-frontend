@@ -25,22 +25,30 @@ export default function LoginPage() {
     }
 
     try {
+      console.log("🔍 Sending login request with:", { username, password }); // ✅ Debug log
+
       const res = await api.post('/auth/login', {   // ✅ use api instance
         username,
         password
       });
 
-      console.log('Login response:', res.data);
+      console.log('✅ Login response:', res.data);
 
       if (res.data.token) {
+        // ✅ Save to Context
         setToken(res.data.token);
         setUser(res.data.user || { username });
+
+        // ✅ Also persist to localStorage
+        localStorage.setItem("token", res.data.token);
+        localStorage.setItem("user", JSON.stringify(res.data.user || { username }));
+
         nav('/home');
       } else {
         setErr('No token received from server');
       }
     } catch (error) {
-      console.error('Login error:', error);
+      console.error('❌ Login error:', error);
 
       if (error.response) {
         if (error.response.status === 401) {

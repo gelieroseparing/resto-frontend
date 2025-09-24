@@ -9,6 +9,7 @@ export default function HomePage() {
   const nav = useNavigate();
 
   const [items, setItems] = useState([]);
+  const [orders, setOrders] = useState([]);
   const [soldOutCount, setSoldOutCount] = useState(0);
   const [bestFood, setBestFood] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState(null);
@@ -22,23 +23,29 @@ export default function HomePage() {
 
   const categories = ['All', 'Drinks', 'Breakfast', 'Dessert', 'Lunch', 'Dinner', 'Snack'];
 
+  // ✅ fetch both items and orders
   const loadData = useCallback(async () => {
     try {
-      const res = await api.get('/api/items');
-      setItems(res.data);
+      const [itemsRes, ordersRes] = await Promise.all([
+        api.get("/api/items"),
+        api.get("/api/orders")
+      ]);
 
-      // Calculate sold-out items
-      const soldOutItems = res.data.filter(item => item.stock === 0);
+      setItems(itemsRes.data);
+      setOrders(ordersRes.data);
+
+      // sold out + best food (same as before)
+      const soldOutItems = itemsRes.data.filter(item => item.stock === 0);
       setSoldOutCount(soldOutItems.length);
 
-      // Find the best food by rating (only available items)
-      const availableItems = res.data.filter(item => item.isAvailable);
+      const availableItems = itemsRes.data.filter(item => item.isAvailable);
       const best = availableItems.reduce((prev, current) => {
         return (prev.rating || 0) > (current.rating || 0) ? prev : current;
       }, {});
       setBestFood(best);
+
     } catch (err) {
-      console.error('Failed to load items', err);
+      console.error("Failed to load data", err);
     }
   }, [api]);
 
@@ -531,6 +538,43 @@ export default function HomePage() {
           <p style={{ fontSize: '14px' }}>Try a different search or category</p>
         </div>
       )}
+
+      {/* Recent Orders Section */}
+      <div style={{ marginTop: "40px" }}>
+        <h2 style={{ color: "#fff", marginBottom: "10px" }}>Recent Orders</h2>
+        {orders.length === 0 ? (
+          <p style={{ color: "#ddd" }}>No orders found</p>
+        ) : (
+          <div style={{ 
+            display: "flex", 
+            flexDirection: "column", 
+            gap: "12px" 
+          }}>
+            {orders.map(order => (
+              <div key={order._id} style={{
+                background: "rgba(255,255,255,0.8)",
+                padding: "12px",
+                borderRadius: "10px",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.1)"
+              }}>
+                <p style={{ margin: 0, fontWeight: "600", color: "#111" }}>
+                  {order.user?.name || "Unknown User"}
+                </p>
+                <p style={{ margin: "4px 0", fontSize: "13px", color: "#333" }}>
+                  {new Date(order.createdAt).toLocaleString()}
+                </p>
+                <ul style={{ margin: "8px 0 0", paddingLeft: "16px", color: "#444" }}>
+                  {order.items.map(it => (
+                    <li key={it._id}>
+                      {it.item?.name} × {it.quantity}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Bottom Navigation */}
       <div style={{

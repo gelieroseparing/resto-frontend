@@ -12,7 +12,6 @@ import SettingPage from './pages/SettingPage';
 import HomePage from './pages/HomePage';
 import AboutPage from './pages/AboutPage';
 
-
 const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
 
@@ -25,6 +24,7 @@ export default function App() {
   const [token, setToken] = useState(localStorage.getItem('token') || '');
   const [user, setUser] = useState(JSON.parse(localStorage.getItem('user') || 'null'));
 
+  // ✅ Keep localStorage in sync when token or user changes
   useEffect(() => {
     if (token) {
       localStorage.setItem('token', token);
@@ -38,9 +38,12 @@ export default function App() {
     }
   }, [token, user]);
 
+  // ✅ Logout clears both state and storage
   const logout = () => { 
     setToken(''); 
     setUser(null); 
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
   };
 
   return (
@@ -61,7 +64,6 @@ export default function App() {
           <Route path="/settingpage" element={<Protected><SettingPage /></Protected>} />
           <Route path="/home" element={<Protected><HomePage /></Protected>} />
           <Route path="/about" element={<Protected><AboutPage /></Protected>} />
-
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
