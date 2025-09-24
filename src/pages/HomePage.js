@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import axios from 'axios';
 import { useAuth } from '../App';
 import { useNavigate } from 'react-router-dom';
@@ -7,7 +7,6 @@ import { FaHome, FaShoppingCart, FaCog, FaPlus, FaShoppingBasket, FaStar, FaSear
 export default function HomePage() {
   const { token, user } = useAuth();
   const nav = useNavigate();
-  const printRef = useRef(); // added for print functionality
 
   const [items, setItems] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -60,6 +59,7 @@ export default function HomePage() {
   const addToCart = (item, e) => {
     e.stopPropagation();
     
+    // Check if item is available
     if (!item.isAvailable) {
       const notification = document.createElement('div');
       notification.textContent = `${item.name} is currently unavailable!`;
@@ -92,6 +92,7 @@ export default function HomePage() {
       setCart([...cart, { ...item, quantity: 1 }]);
     }
     
+    // Show feedback that item was added
     const notification = document.createElement('div');
     notification.textContent = `Added ${item.name} to cart!`;
     notification.style.position = 'fixed';
@@ -110,7 +111,7 @@ export default function HomePage() {
     }, 2000);
   };
 
-  // Filter items based on category and search
+  // Filter items based on selected category and search query
   const filteredItems = (selectedCategory
     ? items.filter(it => it.category === selectedCategory)
     : items
@@ -150,6 +151,7 @@ export default function HomePage() {
             marginTop: '4px'
           }}>Delicious food awaits!</p>
         </div>
+        
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           {/* Cart Icon with Badge */}
           <div 
@@ -219,6 +221,7 @@ export default function HomePage() {
                   objectFit: 'cover' 
                 }}
                 onError={(e) => {
+                  // If image fails to load, show fallback
                   e.target.style.display = 'none';
                 }}
               />
