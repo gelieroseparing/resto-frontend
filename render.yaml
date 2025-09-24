@@ -1,13 +1,16 @@
 services:
   - type: web
-    name: resto-frontend      # Matches your GitHub repo name
+    name: resto-frontend
     env: static
-    staticPublishPath: build  # React build output
+    staticPublishPath: build
     plan: free
     buildCommand: npm install && npm run build
     envVars:
       - key: REACT_APP_API_URL
-        value: https://resto-backend-0wwz.onrender.com/api   # Replace with your actual backend Render URL
+        value: https://resto-backend-0wwz.onrender.com/api
     routes:
       - type: static
         path: /
+      - type: rewrite
+        source: /<*>
+        destination: /

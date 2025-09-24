@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useAuth } from '../App';
-import { useNavigate } from 'react-router-dom'; // For navigation
+import { useNavigate } from 'react-router-dom';
 
 export default function HistoryTransaction() {
   const { token } = useAuth();
   const [orders, setOrders] = useState([]);
-  const [selectedDate, setSelectedDate] = useState(null); // Track selected date
-  const [searchDate, setSearchDate] = useState(''); // For manual date search
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [searchDate, setSearchDate] = useState('');
   const navigate = useNavigate();
 
   const api = axios.create({
@@ -21,14 +21,10 @@ export default function HistoryTransaction() {
       .catch(e => console.error('Failed to fetch orders:', e));
   }, [api]);
 
-  // Extract unique dates from orders
   const uniqueDates = Array.from(
-    new Set(
-      orders.map(o => new Date(o.createdAt).toDateString())
-    )
+    new Set(orders.map(o => new Date(o.createdAt).toDateString()))
   ).sort((a, b) => new Date(b) - new Date(a));
 
-  // Filter orders based on selected date or search date
   const filteredOrders = selectedDate
     ? orders.filter(o => new Date(o.createdAt).toDateString() === selectedDate)
     : searchDate
@@ -43,7 +39,7 @@ export default function HistoryTransaction() {
       fontFamily: "'Poppins', sans-serif",
       position: "relative"
     }}>
-      {/* Back Button Icon */}
+      {/* Back Button */}
       <div style={{
         position: "absolute",
         top: "20px",
@@ -52,11 +48,10 @@ export default function HistoryTransaction() {
         cursor: "pointer",
         fontSize: "24px"
       }} onClick={() => navigate('/settingpage')}>
-        {/* Unicode arrow or icon from a library */}
-        &#8592; {/* Left arrow */}
+        &#8592;
       </div>
 
-      {/* Title and Search Bar */}
+      {/* Title & Search */}
       <h2 style={{
         textAlign: "center",
         marginBottom: "20px",
@@ -65,7 +60,7 @@ export default function HistoryTransaction() {
         fontWeight: 600,
       }}>Order History</h2>
 
-      {/* Search Date Input */}
+      {/* Search by Date */}
       <div style={{ marginBottom: "20px", display: "flex", flexDirection: "column", alignItems: "center" }}>
         <label htmlFor="searchDate" style={{ marginBottom: "8px", color: "#efeff1ff", fontWeight: "bold" }}>Search by Date:</label>
         <input
@@ -74,7 +69,7 @@ export default function HistoryTransaction() {
           value={searchDate}
           onChange={(e) => {
             setSearchDate(e.target.value);
-            setSelectedDate(null); // Reset selection when searching manually
+            setSelectedDate(null);
           }}
           style={{
             padding: "8px",
@@ -83,12 +78,9 @@ export default function HistoryTransaction() {
             width: "200px"
           }}
         />
-        {/* Optional: Clear search button */}
         {searchDate && (
           <button
-            onClick={() => {
-              setSearchDate('');
-            }}
+            onClick={() => { setSearchDate(''); }}
             style={{
               marginTop: "10px",
               padding: "6px 12px",
@@ -98,22 +90,16 @@ export default function HistoryTransaction() {
               borderRadius: "4px",
               cursor: "pointer"
             }}
-          >
-            Clear Search
-          </button>
+          >Clear Search</button>
         )}
       </div>
 
-      {/* Date selection buttons */}
+      {/* Date Buttons */}
       <div style={{ marginBottom: "30px", textAlign: "center" }}>
         <h3 style={{ marginBottom: "10px", color: "#efeff1ff" }}>Select a Date</h3>
         <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center" }}>
-          {/* All Button */}
           <button
-            onClick={() => {
-              setSelectedDate(null);
-              setSearchDate('');
-            }}
+            onClick={() => { setSelectedDate(null); setSearchDate(''); }}
             style={{
               margin: "5px",
               padding: "8px 16px",
@@ -124,10 +110,7 @@ export default function HistoryTransaction() {
               cursor: "pointer",
               fontWeight: "bold",
             }}
-          >
-            All
-          </button>
-          {/* Date Buttons */}
+          >All</button>
           {uniqueDates.map((dateStr) => (
             <button
               key={dateStr}
@@ -191,6 +174,12 @@ export default function HistoryTransaction() {
                 <div style={{ fontWeight: 600, color: "#111827" }}>
                   Order #{o._id.slice(-6)} • {new Date(o.createdAt).toLocaleString()}
                 </div>
+                {/* Show previous user info if available */}
+                {o.createdBy && (
+                  <div style={{ fontSize: "12px", color: "#555" }}>
+                    Ordered by: {o.createdBy}
+                  </div>
+                )}
               </div>
               {/* Order Details */}
               <div style={{ marginBottom: "12px", color: "#050507ff", fontSize: "14px" }}>
