@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom'; // Added Link import
 import api from '../services/api'; // Your shared API instance
 import backgroundImage from '../assets/images/Background.jpg';
 
