@@ -9,25 +9,26 @@ export default function OrderPage() {
   const nav = useNavigate();
   const location = useLocation();
 
+  // Set initial orderType to 'take-out' instead of default
   const [orderType, setOrderType] = useState('take-out');
-  const [items, setItems] = useState([{ name: '', quantity: 1, price: 0 }]);
+  const [items, setItems] = useState([{ category: '', name: '', quantity: 1, price: 0 }]);
   const [menuItems, setMenuItems] = useState([]);
-  const [lastOrder, setLastOrder] = useState(null);
-  const [cartItems, setCartItems] = useState([]);
-  const [additionalPayments, setAdditionalPayments] = useState([]);
+  const [lastOrder, setLastOrder] = useState(null); // store last placed order
+  const [cartItems, setCartItems] = useState([]); // Items from cart
+  const [additionalPayments, setAdditionalPayments] = useState([]); // Additional payments like tupperware
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const printRef = useRef();
+  const printRef = useRef(); // reference for printable section
 
-  // Create axios instance with auth header
   const api = axios.create({
-    baseURL: 'http://localhost:5000/api',
+    baseURL: 'http://localhost:5000',
     headers: token ? { Authorization: `Bearer ${token}` } : {}
   });
 
   // Load cart items from navigation state
   useEffect(() => {
     if (location.state?.cartItems) {
+      // Filter out any unavailable items from cart
       const availableCartItems = location.state.cartItems.filter(item => item.isAvailable);
       setCartItems(availableCartItems);
       
@@ -39,12 +40,13 @@ export default function OrderPage() {
     
     if (location.state?.preselect) {
       const item = location.state.preselect;
+      // Check if preselected item is available
       if (item.isAvailable) {
         setItems([{ 
+          category: item.category, 
           name: item.name, 
           quantity: 1, 
-          price: item.price,
-          itemId: item._id
+          price: item.price 
         }]);
       } else {
         setError('Selected item is currently unavailable');
@@ -56,7 +58,8 @@ export default function OrderPage() {
   // Load menu items - only available ones
   const loadMenuItems = useCallback(async () => {
     try {
-      const res = await api.get('/items');
+      const res = await api.get('/api/items');
+      // Filter out unavailable items for the dropdown
       const availableItems = res.data.filter(item => item.isAvailable);
       setMenuItems(availableItems);
     } catch (err) {
@@ -72,7 +75,7 @@ export default function OrderPage() {
 
   // Add new item row
   const handleAddItem = () => {
-    setItems([...items, { name: '', quantity: 1, price: 0 }]);
+    setItems([...items, { category: '', name: '', quantity: 1, price: 0 }]);
   };
 
   // Handle change in item selection or quantity
@@ -84,11 +87,15 @@ export default function OrderPage() {
       const found = menuItems.find(m => m.name === value);
       if (found) {
         updated[index].price = found.price;
-        updated[index].itemId = found._id;
+        updated[index].category = found.category;
       } else {
         updated[index].price = 0;
-        updated[index].itemId = null;
       }
+    }
+
+    if (field === 'category') {
+      updated[index].name = '';
+      updated[index].price = 0;
     }
 
     setItems(updated);
@@ -98,7 +105,7 @@ export default function OrderPage() {
   const removeItem = (index) => {
     const updated = [...items];
     updated.splice(index, 1);
-    setItems(updated.length === 0 ? [{ name: '', quantity: 1, price: 0 }] : updated);
+    setItems(updated.length === 0 ? [{ category: '', name: '', quantity: 1, price: 0 }] : updated);
   };
 
   // Add cart items to order items
@@ -110,14 +117,14 @@ export default function OrderPage() {
     }
 
     const cartItemsAsOrderItems = cartItems.map(item => ({
+      category: item.category,
       name: item.name,
       quantity: item.quantity,
-      price: item.price,
-      itemId: item._id
+      price: item.price
     }));
 
     setItems([...items.filter(item => item.name), ...cartItemsAsOrderItems]);
-    setCartItems([]);
+    setCartItems([]); // Clear cart after adding
     setSuccess('Cart items added to order!');
     setTimeout(() => setSuccess(''), 3000);
   };
@@ -138,7 +145,7 @@ export default function OrderPage() {
     setCartItems(updatedCart);
   };
 
-  // Add additional payment
+  // Add additional payment (like tupperware)
   const handleAddAdditionalPayment = () => {
     setAdditionalPayments([...additionalPayments, { description: '', amount: 0 }]);
   };
@@ -157,51 +164,60 @@ export default function OrderPage() {
     setAdditionalPayments(updated);
   };
 
-  const itemsTotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-  const cartTotalAmount = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+  const itemsTotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const cartTotalAmount = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const additionalPaymentsTotal = additionalPayments.reduce((sum, payment) => sum + (parseFloat(payment.amount) || 0), 0);
   const totalAmount = itemsTotal + additionalPaymentsTotal;
 
   // Place new order
   const handlePlaceOrder = async () => {
     try {
-      // Filter out empty items and prepare order items
-      const orderItems = items
-        .filter(item => item.name && item.itemId)
-        .map(item => ({
-          itemId: item.itemId,
-          name: item.name,
-          price: item.price,
-          quantity: item.quantity
-        }));
-
-      if (orderItems.length === 0) {
-        setError('Please add at least one valid item.');
+      const allItems = [...items.filter(item => item.name)];
+      
+      if (allItems.length === 0) {
+        setError('Please add at least one item.');
         setTimeout(() => setError(''), 3000);
         return;
       }
-
-      // Create order data
+      
+      // Validate that all items are available
+      for (const item of allItems) {
+        const menuItem = menuItems.find(m => m.name === item.name);
+        if (!menuItem) {
+          setError(`Item "${item.name}" is not available or has been removed`);
+          setTimeout(() => setError(''), 3000);
+          return;
+        }
+      }
+      
+      // Create order data with all necessary fields
       const orderData = {
         orderType,
-        items: orderItems,
+        items: allItems,
+        additionalPayments: additionalPayments.filter(p => p.description && p.amount > 0),
         totalAmount: totalAmount,
-        createdBy: user?.username || 'Customer'
+        subtotal: itemsTotal,
+        status: 'complete',
+        paymentMethod: 'Cash' // Default payment method
       };
-
-      const res = await api.post('/orders', orderData);
+      
+      const res = await api.post('/api/orders', orderData);
       setSuccess('Order placed successfully!');
       
       // Save the complete order data for the receipt
       setLastOrder({
-        ...res.data.order,
-        items: orderItems,
-        totalAmount: totalAmount,
-        createdBy: user?.username || 'Customer'
+        ...res.data,
+        // Ensure we have all the fields needed for the receipt
+        items: orderData.items,
+        additionalPayments: orderData.additionalPayments,
+        totalAmount: orderData.totalAmount,
+        subtotal: orderData.subtotal,
+        paymentMethod: orderData.paymentMethod,
+        orderType: orderData.orderType
       });
       
       // Reset the form and cart
-      setItems([{ name: '', quantity: 1, price: 0 }]);
+      setItems([{ category: '', name: '', quantity: 1, price: 0 }]);
       setCartItems([]);
       setAdditionalPayments([]);
     } catch (err) {
@@ -212,37 +228,20 @@ export default function OrderPage() {
     }
   };
 
-  // Print order receipt
+  // Print order
   const handlePrint = () => {
-    if (!lastOrder) return;
-    
     const printContents = printRef.current.innerHTML;
     const win = window.open('', '', 'height=600,width=800');
-    win.document.write(`
-      <html>
-        <head>
-          <title>Order Receipt</title>
-          <style>
-            body { 
-              font-family: Arial, sans-serif; 
-              padding: 20px; 
-              max-width: 400px;
-              margin: 0 auto;
-            }
-            .receipt-header { text-align: center; margin-bottom: 20px; }
-            .receipt-item { display: flex; justify-content: space-between; margin-bottom: 8px; }
-            .receipt-total { border-top: 2px solid #000; padding-top: 10px; margin-top: 10px; }
-          </style>
-        </head>
-        <body>${printContents}</body>
-      </html>
-    `);
+    win.document.write('<html><head><title>Order Receipt</title><style>body { font-family: Arial, sans-serif; padding: 20px; }</style></head><body>');
+    win.document.write(printContents);
+    win.document.write('</body></html>');
     win.document.close();
     win.print();
   };
 
+  // Safe function to format amount with fallback
   const formatAmount = (amount) => {
-    return parseFloat(amount || 0).toFixed(2);
+    return amount ? amount.toFixed(2) : '0.00';
   };
 
   return (
@@ -254,7 +253,7 @@ export default function OrderPage() {
         justifyContent: 'space-between', 
         alignItems: 'center', 
         marginBottom: 24,
-        background: '#ca9a9aff',
+        background: '#c9c6c7ff',
         padding: '16px 20px',
         borderRadius: 16,
         boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
@@ -278,7 +277,7 @@ export default function OrderPage() {
           >
             <FaHome />
           </button>
-          <h2 style={{ margin: 0, color: '#fff', fontFamily: 'Arial Rounded MT Bold, sans-serif' }}>Order Page</h2>
+          <h2 style={{ margin: 0, color: '#790707ff', fontFamily: 'Arial Rounded MT Bold, sans-serif' }}>Order Page</h2>
         </div>
       </div>
 
@@ -286,8 +285,8 @@ export default function OrderPage() {
       {error && (
         <div style={{ 
           padding: '12px 16px', 
-          background: '#f8d7da', 
-          color: '#721c24', 
+          background: '#ca9a9aff', 
+          color: '#dc2626', 
           borderRadius: '8px', 
           marginBottom: '20px',
           display: 'flex',
@@ -302,8 +301,8 @@ export default function OrderPage() {
       {success && (
         <div style={{ 
           padding: '12px 16px', 
-          background: '#d4edda', 
-          color: '#155724', 
+          background: '#ca9a9aff', 
+          color: '#166534', 
           borderRadius: '8px', 
           marginBottom: '20px',
           display: 'flex',
@@ -323,14 +322,16 @@ export default function OrderPage() {
           boxShadow: '0 8px 20px rgba(0,0,0,0.08)', 
           maxWidth: 800, 
           margin: '0 auto', 
-          marginBottom: 20
+          marginBottom: 20,
+          border: '2px solid #c54e88ff'
         }}>
           <h3 style={{ 
-            color: '#fff', 
+            color: '#0a0c11ff', 
             marginBottom: 16, 
             display: 'flex', 
             justifyContent: 'space-between', 
-            alignItems: 'center'
+            alignItems: 'center',
+            fontFamily: 'Arial Rounded MT Bold, sans-serif'
           }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <FaShoppingCart /> Cart Items ({cartItems.length})
@@ -346,11 +347,12 @@ export default function OrderPage() {
               padding: '12px', 
               marginBottom: '8px', 
               backgroundColor: '#dbb5bfff',
-              borderRadius: '12px'
+              borderRadius: '12px',
+              border: '1px solid #790707ff'
             }}>
               <div style={{ flex: 2 }}>
-                <div style={{ fontWeight: '600', color: '#333' }}>{item.name}</div>
-                <div style={{ fontSize: '14px', color: '#666' }}>{item.category}</div>
+                <div style={{ fontWeight: '600', color: '#170b11ff' }}>{item.name}</div>
+                <div style={{ fontSize: '14px', color: '#1b0d11ff' }}>{item.category}</div>
               </div>
               
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -360,14 +362,22 @@ export default function OrderPage() {
                     padding: '6px', 
                     borderRadius: '8px', 
                     border: '1px solid #790707ff', 
-                    background: '#fff', 
-                    cursor: 'pointer'
+                    background: '#1b1515ff', 
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
                   }}
                 >
-                  <FaMinus size={12} />
+                  <FaMinus size={15} color="#ff6b93" />
                 </button>
                 
-                <span style={{ minWidth: '30px', textAlign: 'center', fontWeight: '700' }}>
+                <span style={{ 
+                  minWidth: '30px', 
+                  textAlign: 'center', 
+                  fontWeight: '700',
+                  color: '#0c090aff'
+                }}>
                   {item.quantity}
                 </span>
                 
@@ -377,15 +387,23 @@ export default function OrderPage() {
                     padding: '6px', 
                     borderRadius: '8px', 
                     border: '1px solid #790707ff', 
-                    background: '#fff', 
-                    cursor: 'pointer'
+                    background: '#0b0909ff', 
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
                   }}
                 >
-                  <FaPlus size={12} />
+                  <FaPlus size={15} color="#ff6b93" />
                 </button>
               </div>
               
-              <div style={{ minWidth: '70px', textAlign: 'right', fontWeight: '600' }}>
+              <div style={{ 
+                minWidth: '70px', 
+                textAlign: 'right', 
+                fontWeight: '600',
+                color: '#1d1416ff'
+              }}>
                 ₱{formatAmount(item.price * item.quantity)}
               </div>
               
@@ -395,12 +413,16 @@ export default function OrderPage() {
                   padding: '8px', 
                   borderRadius: '8px', 
                   border: 'none', 
-                  background: '#dc3545', 
-                  color: 'white', 
-                  cursor: 'pointer'
+                  background: '#191515ff', 
+                  color: '#ff6b93', 
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
                 }}
+                title="Remove from cart"
               >
-                <FaTrash size={12} />
+                <FaTrash size={15} />
               </button>
             </div>
           ))}
@@ -412,11 +434,16 @@ export default function OrderPage() {
               padding: '12px 16px', 
               borderRadius: '12px', 
               border: 'none', 
-              background: '#28a745', 
-              color: 'white', 
+              background: '#3f3535ff', 
+              color: '#ff6b93', 
               fontWeight: 'bold', 
               cursor: 'pointer',
-              width: '100%'
+              width: '100%',
+              fontSize: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px'
             }}
           >
             <FaPlus /> Add All Cart Items to Order
@@ -432,13 +459,20 @@ export default function OrderPage() {
         boxShadow: '0 8px 20px rgba(0,0,0,0.08)', 
         maxWidth: 800, 
         margin: '0 auto', 
-        marginBottom: 40
+        marginBottom: 40,
+        border: '2px solid #cc577eff'
       }}>
-        <h3 style={{ color: '#fff', marginBottom: 16 }}>Customer Order Entry</h3>
+        <h3 style={{ 
+          color: '#181213ff', 
+          marginBottom: 16,
+          fontFamily: 'Arial Rounded MT Bold, sans-serif'
+        }}>
+          Customer Order Entry
+        </h3>
 
         {/* Order Type */}
         <div style={{ marginBottom: 16 }}>
-          <label style={{ fontWeight: '600', color: '#fff' }}>Order Type:</label>
+          <label style={{ fontWeight: '600', color: '#0f060aff' }}><strong>Order Type:</strong></label>
           <select
             value={orderType}
             onChange={(e) => setOrderType(e.target.value)}
@@ -447,7 +481,9 @@ export default function OrderPage() {
               padding: '8px 12px', 
               borderRadius: 12, 
               border: '2px solid #754752ff',
-              background: '#fff'
+              background: '#ddb7bfff',
+              color: '#1e171aff',
+              fontWeight: '500'
             }}
           >
             <option value="dine-in">Dine-In</option>
@@ -457,69 +493,107 @@ export default function OrderPage() {
         </div>
 
         {/* Items */}
-        {items.map((item, index) => (
-          <div key={index} style={{ 
-            display: 'flex', 
-            gap: 8, 
-            marginBottom: 12, 
-            alignItems: 'center',
-            flexWrap: 'wrap'
-          }}>
-            <select
-              value={item.name}
-              onChange={(e) => handleItemChange(index, 'name', e.target.value)}
-              style={{ 
-                flex: 2, 
-                padding: '10px', 
-                borderRadius: 12, 
-                border: '2px solid #754752ff',
-                background: '#fff',
-                minWidth: '200px'
-              }}
-            >
-              <option value="">-- Select Item --</option>
-              {menuItems.map((m) => (
-                <option key={m._id} value={m.name}>
-                  {m.name} - ₱{m.price}
-                </option>
-              ))}
-            </select>
+        {items.map((item, index) => {
+          const availableItems = item.category
+            ? menuItems.filter(m => m.category === item.category)
+            : [];
 
-            <input
-              type="number"
-              min="1"
-              value={item.quantity}
-              onChange={(e) => handleItemChange(index, 'quantity', parseInt(e.target.value))}
-              style={{ 
-                width: 70, 
-                padding: '10px', 
-                borderRadius: 12, 
-                border: '2px solid #754752ff', 
-                textAlign: 'center'
-              }}
-            />
-
-            <div style={{ minWidth: 90, textAlign: 'right', fontWeight: 800, color: '#fff' }}>
-              ₱{formatAmount(item.price * item.quantity)}
-            </div>
-
-            {items.length > 1 && (
-              <button
-                onClick={() => removeItem(index)}
+          return (
+            <div key={index} style={{ 
+              display: 'flex', 
+              gap: 8, 
+              marginBottom: 12, 
+              alignItems: 'center',
+              flexWrap: 'wrap'
+            }}>
+              <select
+                value={item.category}
+                onChange={(e) => handleItemChange(index, 'category', e.target.value)}
                 style={{ 
-                  padding: '8px', 
-                  borderRadius: '8px', 
-                  border: 'none', 
-                  background: '#dc3545', 
-                  color: 'white', 
-                  cursor: 'pointer'
+                  flex: 1, 
+                  padding: '10px', 
+                  borderRadius: 12, 
+                  border: '2px solid #754752ff',
+                  background: '#ddb7bfff',
+                  color: '#1c1619ff',
+                  minWidth: '120px'
                 }}
               >
-                <FaTrash size={12} />
-              </button>
-            )}
-          </div>
-        ))}
+                <option value="">-- Select Category --</option>
+                {[...new Set(menuItems.map(m => m.category))].map((cat) => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+
+              <select
+                value={item.name}
+                onChange={(e) => handleItemChange(index, 'name', e.target.value)}
+                style={{ 
+                  flex: 2, 
+                  padding: '10px', 
+                  borderRadius: 12, 
+                  border: '2px solid ' + (!item.category ? '#754752ff' : '#695252ff'),
+                  background: !item.category ? '#ddb7bfff' : '#ddb7bfff',
+                  color: '#140e11ff',
+                  minWidth: '150px'
+                }}
+                disabled={!item.category}
+              >
+                <option value="">-- Select Item --</option>
+                {availableItems.map((m) => (
+                  <option key={m._id} value={m.name}>
+                    {m.name} - ₱{m.price}
+                  </option>
+                ))}
+              </select>
+
+              <input
+                type="number"
+                min="1"
+                value={item.quantity}
+                onChange={(e) => handleItemChange(index, 'quantity', parseInt(e.target.value))}
+                style={{ 
+                  width: 70, 
+                  padding: '10px', 
+                  borderRadius: 12, 
+                  border: '2px solid #754752ff', 
+                  textAlign: 'center',
+                  background: '#ddb7bfff',
+                  color: '#211b1eff'
+                }}
+              />
+
+              <div style={{ 
+                minWidth: 90, 
+                textAlign: 'right', 
+                fontWeight: 800,
+                color: '#120d0fff'
+              }}>
+                ₱{formatAmount(item.price * item.quantity)}
+              </div>
+
+              {items.length > 1 && (
+                <button
+                  onClick={() => removeItem(index)}
+                  style={{ 
+                    padding: '8px', 
+                    borderRadius: '8px', 
+                    border: 'none', 
+                    background: '#191515ff', 
+                    color: '#ff6b93', 
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                  title="Remove item"
+                >
+                  <FaTrash size={12} />
+                </button>
+              )}
+            </div>
+          );
+        })}
 
         <button
           onClick={handleAddItem}
@@ -527,41 +601,142 @@ export default function OrderPage() {
             marginBottom: 16, 
             padding: '12px 16px', 
             borderRadius: 12, 
-            background: '#007bff', 
-            color: 'white', 
+            background: '#110c0dff', 
+            color: '#ff6b93', 
             fontWeight: 'bold', 
             border: 'none',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: '8px'
+            gap: '8px',
+            fontSize: '15px'
           }}
         >
           <FaPlus /> Add Item
         </button>
 
-        {/* Total Display */}
+        {/* Additional Payments Section - Only show for take-out orders */}
+        {orderType === 'take-out' && (
+          <div style={{ marginBottom: 16 }}>
+            <h4 style={{ 
+              color: '#181717ff', 
+              marginBottom: 12,
+              fontFamily: 'Arial Rounded MT Bold, sans-serif'
+            }}>
+              Additional Payments 
+            </h4>
+            
+            {additionalPayments.map((payment, index) => (
+              <div key={index} style={{ 
+                display: 'flex', 
+                gap: 8, 
+                marginBottom: 12, 
+                alignItems: 'center',
+                flexWrap: 'wrap'
+              }}>
+                <input
+                  type="text"
+                  placeholder="Description (e.g., Tupperware)"
+                  value={payment.description}
+                  onChange={(e) => handleAdditionalPaymentChange(index, 'description', e.target.value)}
+                  style={{ 
+                    flex: 2, 
+                    padding: '10px', 
+                    borderRadius: 12, 
+                    border: '2px solid #754752ff',
+                    background: '#ddb7bfff',
+                    color: '#120f10ff',
+                    minWidth: '150px'
+                  }}
+                />
+                
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="Amount"
+                  value={payment.amount}
+                  onChange={(e) => handleAdditionalPaymentChange(index, 'amount', parseFloat(e.target.value))}
+                  style={{ 
+                    width: 100, 
+                    padding: '10px', 
+                    borderRadius: 12, 
+                    border: '2px solid #754752ff', 
+                    textAlign: 'center',
+                    background: '#ddb7bfff',
+                    color: '#080708ff'
+                  }}
+                />
+                
+                <button
+                  onClick={() => handleRemoveAdditionalPayment(index)}
+                  style={{ 
+                    padding: '10px', 
+                    borderRadius: 12, 
+                    border: 'none', 
+                    background: '#040303ff', 
+                    color: '#ff6b93', 
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                  title="Remove additional payment"
+                >
+                  <FaTrash size={14} />
+                </button>
+              </div>
+            ))}
+            
+            <button
+              onClick={handleAddAdditionalPayment}
+              style={{ 
+                marginBottom: 16, 
+                padding: '10px 14px', 
+                borderRadius: 12, 
+                background: '#0b0a0aff', 
+                color: '#ff6b93', 
+                fontWeight: 'bold', 
+                border: 'none',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                fontSize: '14px'
+              }}
+            >
+              <FaPlus /> Add Additional Payment
+            </button>
+          </div>
+        )}
+
+        {/* Total Display - Enhanced visibility */}
         <div style={{ 
           textAlign: 'right', 
           fontWeight: 'bold', 
           fontSize: 18, 
           marginBottom: 16,
           padding: '16px',
-          backgroundColor: '#dbb5bfff',
+          backgroundColor: '#ddb7bfff',
           borderRadius: 12,
           border: '2px solid #925a65ff'
         }}>
-          <div style={{ marginBottom: 8, color: '#333' }}>
+          <div style={{ marginBottom: 8, color: '#080707ff' }}>
             Items Total: ₱{formatAmount(itemsTotal)}
           </div>
           
           {additionalPayments.length > 0 && (
-            <div style={{ marginBottom: 8, color: '#333' }}>
+            <div style={{ marginBottom: 8, color: '#0b090aff' }}>
               Additional Payments: ₱{formatAmount(additionalPaymentsTotal)}
             </div>
           )}
           
-          <div style={{ borderTop: '2px solid #333', paddingTop: 8, color: '#333', fontSize: 20 }}>
+          <div style={{ 
+            borderTop: '2px solid #100b0cff', 
+            paddingTop: 8, 
+            color: '#140e10ff', 
+            fontSize: 20 
+          }}>
             Total Amount: ₱{formatAmount(totalAmount)}
           </div>
         </div>
@@ -569,60 +744,176 @@ export default function OrderPage() {
         <button
           onClick={handlePlaceOrder}
           style={{ 
-            background: '#28a745', 
-            color: 'white', 
+            background: '#0b0809ff', 
+            color: '#ff6b93', 
             padding: '12px 24px', 
             border: 'none', 
             borderRadius: 12, 
             fontWeight: 'bold', 
             cursor: 'pointer',
             fontSize: '16px',
-            width: '100%'
+            width: '100%',
+            boxShadow: '0 4px 8px rgba(255, 182, 193, 0.4)'
           }}
         >
           Place Order
         </button>
       </div>
 
-      {/* Print Last Order Receipt */}
+      {/* Print Last Order - This will appear when lastOrder is set (after clicking Place Order) */}
       {lastOrder && (
         <div style={{ 
           maxWidth: 800, 
           margin: '0 auto', 
-          background: '#fff', 
+          background: '#ca9a9aff', 
           padding: 24, 
           borderRadius: 20, 
-          boxShadow: '0 8px 20px rgba(0,0,0,0.08)'
+          boxShadow: '0 8px 20px rgba(168, 49, 49, 0.08)',
+          border: '2px solid #a12743ff'
         }}>
           <div ref={printRef}>
-            <h3 style={{ textAlign: 'center', marginBottom: '16px', color: '#333' }}>
+            <h3 style={{ 
+              color: '#0f0c0cff', 
+              textAlign: 'center',
+              fontFamily: 'Arial Rounded MT Bold, sans-serif',
+              marginBottom: '16px'
+            }}>
               ORDER RECEIPT
             </h3>
             
-            <div style={{ marginBottom: 16 }}>
-              <strong>Order ID:</strong> {lastOrder._id?.slice(-6) || 'N/A'}<br />
-              <strong>Date:</strong> {new Date(lastOrder.createdAt || Date.now()).toLocaleString()}<br />
-              <strong>Order Type:</strong> {lastOrder.orderType}<br />
-              <strong>Cashier:</strong> {lastOrder.createdBy}
-            </div>
-            
-            <h4 style={{ marginTop: 10, marginBottom: 10 }}>Order Items:</h4>
-            <div style={{ marginTop: 10 }}>
-              {lastOrder.items && lastOrder.items.map((item, idx) => (
-                <div key={idx} style={{ 
-                  padding: '8px', 
-                  borderBottom: '1px solid #ddd', 
-                  display: 'flex', 
-                  justifyContent: 'space-between'
+            {/* Order Information */}
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: '1fr 1fr', 
+              gap: 16, 
+              marginBottom: 16,
+              padding: '12px',
+              backgroundColor: '#dbb5bfff',
+              borderRadius: '12px'
+            }}>
+              <div>
+                <strong style={{ color: '#020102ff' }}>Order ID:</strong><br />
+                <span style={{ fontSize: '14px', color: '#0e0a0bff' }}>
+                  {lastOrder._id || lastOrder.orderId || 'N/A'}
+                </span>
+              </div>
+              <div>
+                <strong style={{ color: '#050404ff' }}>Order Type:</strong><br />
+                <span style={{ 
+                  fontSize: '14px', 
+                  color: '#0c090aff',
+                  textTransform: 'capitalize'
                 }}>
-                  <div>
-                    {item.name} × {item.quantity}
-                  </div>
-                  <div>₱{formatAmount(item.price * item.quantity)}</div>
-                </div>
-              ))}
+                  {lastOrder.orderType || 'N/A'}
+                </span>
+              </div>
             </div>
             
+            <div style={{ 
+              marginBottom: 16,
+              padding: '12px',
+              backgroundColor: '#dbb5bfff',
+              borderRadius: '12px'
+            }}>
+              <strong style={{ color: '#060505ff' }}>Date & Time:</strong><br />
+              <span style={{ fontSize: '14px', color: '#0a0808ff' }}>
+                {lastOrder.createdAt ? new Date(lastOrder.createdAt).toLocaleString() : new Date().toLocaleString()}
+              </span>
+            </div>
+            
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: '1fr 1fr', 
+              gap: 16, 
+              marginBottom: 16,
+              padding: '12px',
+              backgroundColor: '#dbb5bfff',
+              borderRadius: '12px'
+            }}>
+              <div>
+                <strong style={{ color: '#020101ff' }}>Cashier:</strong><br />
+                <span style={{ fontSize: '14px', color: '#14090cff' }}>
+                  {user?.username || 'N/A'}
+                </span>
+              </div>
+              <div>
+                <strong style={{ color: '#020102ff' }}>Payment Method:</strong><br />
+                <span style={{ fontSize: '14px', color: '#0b0809ff' }}>
+                  {lastOrder.paymentMethod || 'Cash'}
+                </span>
+              </div>
+            </div>
+            
+            {/* Order Items */}
+            <h4 style={{ 
+              marginTop: 10, 
+              marginBottom: 10, 
+              color: '#010101ff',
+              fontFamily: 'Arial Rounded MT Bold, sans-serif'
+            }}>
+              Order Items:
+            </h4>
+            <div style={{ marginTop: 10 }}>
+              {lastOrder.items && lastOrder.items.length > 0 ? (
+                lastOrder.items.map((item, idx) => (
+                  <div key={idx} style={{ 
+                    padding: '12px', 
+                    borderBottom: '2px dotted #7a3243ff', 
+                    display: 'flex', 
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    backgroundColor: idx % 2 ? '#dbb5bfff' : '#dbb5bfff'
+                  }}>
+                    <div style={{ flex: 2 }}>
+                      <div style={{ fontWeight: '600', color: '#060505ff' }}>{item.name}</div>
+                      <div style={{ fontSize: '12px', color: '#10090bff' }}>
+                        {item.category} • {item.quantity} × ₱{item.price}
+                      </div>
+                    </div>
+                    <div style={{ flex: 1, textAlign: 'right', fontWeight: '600', color: '#090305ff' }}>
+                      ₱{formatAmount(item.price * item.quantity)}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p style={{ color: '#0d0809ff', textAlign: 'center' }}>No items</p>
+              )}
+            </div>
+            
+            {/* Additional Payments */}
+            {lastOrder.additionalPayments && lastOrder.additionalPayments.length > 0 && (
+              <>
+                <h4 style={{ 
+                  marginTop: 20, 
+                  marginBottom: 10, 
+                  color: '#0a0708ff',
+                  fontFamily: 'Arial Rounded MT Bold, sans-serif'
+                }}>
+                  Additional Payments:
+                </h4>
+                <div style={{ marginTop: 10 }}>
+                  {lastOrder.additionalPayments.map((payment, idx) => (
+                    <div key={idx} style={{ 
+                      padding: '12px', 
+                      borderBottom: '2px dotted #754752ff', 
+                      display: 'flex', 
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      backgroundColor: idx % 2 ? '#dbb5bfff' : '#dbb5bfff'
+                    }}>
+                      <div style={{ flex: 2 }}>
+                        <div style={{ fontWeight: '600', color: '#010000ff' }}>{payment.description}</div>
+                      </div>
+                      <div style={{ flex: 1, textAlign: 'right', fontWeight: '600', color: '#050404ff' }}>
+                        ₱{formatAmount(payment.amount)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+            
+            {/* Total Amount - Highlighted */}
             <div style={{ 
               display: 'flex', 
               justifyContent: 'space-between', 
@@ -630,14 +921,24 @@ export default function OrderPage() {
               fontWeight: 'bold', 
               fontSize: '18px',
               padding: '16px',
-              borderTop: '2px solid #333',
-              marginTop: '20px'
+              backgroundColor: '#dbb5bfff',
+              borderRadius: '12px',
+              marginTop: '20px',
+              border: '2px solid #c15770ff'
             }}>
-              <div>TOTAL AMOUNT:</div>
-              <div>₱{formatAmount(lastOrder.totalAmount)}</div>
+              <div style={{ color: '#070607ff' }}>TOTAL AMOUNT:</div>
+              <div style={{ color: '#100d0eff', fontSize: '20px' }}>
+                ₱{formatAmount(lastOrder.totalAmount)}
+              </div>
             </div>
             
-            <p style={{ textAlign: 'center', fontStyle: 'italic', marginTop: 20 }}>
+            <p style={{ 
+              textAlign: 'center', 
+              fontStyle: 'italic', 
+              marginTop: 20, 
+              color: '#010101ff',
+              padding: '12px'
+            }}>
               Thank you for your order!
             </p>
           </div>
@@ -649,15 +950,16 @@ export default function OrderPage() {
               padding: '12px 20px', 
               borderRadius: 12, 
               border: 'none', 
-              background: '#007bff', 
-              color: 'white', 
+              background: '#020202ff', 
+              color: '#ff6b93', 
               fontWeight: 'bold', 
               cursor: 'pointer',
               width: '100%',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: '8px'
+              gap: '8px',
+              fontSize: '16px'
             }}
           >
             <FaPrint /> Print Receipt
@@ -672,22 +974,48 @@ export default function OrderPage() {
         left: 0,
         width: '100%',
         backgroundColor: '#fff',
-        borderTop: '1px solid #ddd',
+        borderTop: '1px solid #754752ff',
         display: 'flex',
         justifyContent: 'space-around',
-        padding: '12px 0'
+        padding: '12px 0',
+        boxShadow: '0 -2px 10px rgba(0,0,0,0.05)'
       }}>
-        <button onClick={() => nav('/home')} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+        <button 
+          onClick={() => nav('/home')} 
+          style={{ 
+            background: 'none', 
+            border: 'none', 
+            cursor: 'pointer',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '4px'
+          }}
+        >
           <FaHome size={20} color="#374151" />
+          <span style={{ fontSize: '10px', color: '#374151' }}>Home</span>
         </button>
-        <button onClick={() => nav('/order', { state: { cartItems: cartItems } })} style={{ background: 'none', border: 'none', cursor: 'pointer', position: 'relative' }}>
-          <FaShoppingCart size={20} color="#374151" />
+        <button 
+          onClick={() => nav('/order', { state: { cartItems: cartItems } })} 
+          style={{ 
+            background: 'none', 
+            border: 'none', 
+            cursor: 'pointer',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '4px',
+            position: 'relative'
+          }}
+        >
+          <FaShoppingCart size={20} color="#7b68ee" />
+          <span style={{ fontSize: '10px', color: '#7b68ee' }}>Cart</span>
           {cartItems.length > 0 && (
             <span style={{
               position: 'absolute',
               top: '-5px',
               right: '-5px',
-              backgroundColor: '#dc3545',
+              backgroundColor: '#f0f0f0',
               color: 'white',
               borderRadius: '50%',
               width: '16px',
@@ -695,14 +1023,27 @@ export default function OrderPage() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: '10px'
+              fontSize: '10px',
+              fontWeight: 'bold'
             }}>
               {cartItems.length}
             </span>
           )}
         </button>
-        <button onClick={() => nav('/settingpage')} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+        <button 
+          onClick={() => nav('/settingpage')} 
+          style={{ 
+            background: 'none', 
+            border: 'none', 
+            cursor: 'pointer',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '4px'
+          }}
+        >
           <FaCog size={20} color="#374151" />
+          <span style={{ fontSize: '10px', color: '#374151' }}>Settings</span>
         </button>
       </div>
     </div>

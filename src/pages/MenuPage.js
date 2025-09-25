@@ -60,7 +60,7 @@ export default function MenuPage() {
     try {
       const formData = new FormData();
       formData.append('name', form.name);
-      formData.append('price', form.price);
+      formData.append('price', parseFloat(form.price));
       formData.append('category', form.category);
       formData.append('isAvailable', form.isAvailable.toString());
 
@@ -80,14 +80,15 @@ export default function MenuPage() {
         setSuccess('Item added successfully!');
       }
 
+      // Reset form
       setForm({ name: '', price: '', category: 'Breakfast', imageFile: null, isAvailable: true });
       setPreview(null);
       setEditing(null);
       setShowForm(false);
-      await loadItems();
+      await loadItems(); // Reload items
     } catch (err) {
-      console.error(err);
-      setError('Operation failed. Please try again.');
+      console.error('Submit error:', err);
+      setError(err.response?.data?.error || 'Operation failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -95,8 +96,10 @@ export default function MenuPage() {
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
-    setForm(f => ({ ...f, imageFile: file }));
-    setPreview(file ? URL.createObjectURL(file) : null);
+    if (file) {
+      setForm(f => ({ ...f, imageFile: file }));
+      setPreview(URL.createObjectURL(file));
+    }
   };
 
   const editItem = (item) => {
@@ -110,6 +113,7 @@ export default function MenuPage() {
     });
     setPreview(item.imageUrl ? `http://localhost:5000${item.imageUrl}` : null);
     setShowForm(true);
+    setError('');
   };
 
   const deleteItem = async (id) => {
@@ -133,10 +137,6 @@ export default function MenuPage() {
       formData.append('category', item.category);
       formData.append('isAvailable', (!item.isAvailable).toString());
       
-      if (item.imageUrl) {
-        // If you need to preserve the image, you might need to handle it differently
-      }
-      
       await api.put(`/items/${item._id}`, formData);
       setSuccess(`Item marked as ${!item.isAvailable ? 'available' : 'unavailable'}!`);
       await loadItems();
@@ -155,14 +155,25 @@ export default function MenuPage() {
     item.category.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const resetForm = () => {
+    setForm({ name: '', price: '', category: 'Breakfast', imageFile: null, isAvailable: true });
+    setPreview(null);
+    setEditing(null);
+    setShowForm(false);
+    setError('');
+  };
+
   return (
     <div style={{ padding: 20, background: '#790707ff', minHeight: '100vh' }}>
       
       {/* Topbar */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 30 }}>
         <div style={{ display: 'flex', alignItems: 'center' }}>
-          <FaArrowLeft style={{ marginRight: 12, color: '#fff', cursor: 'pointer' }} onClick={() => navigate(-1)} />
-          <h2 style={{ margin: 0, color: '#fff', fontWeight: '700' }}>Menu Management</h2>
+          <FaArrowLeft 
+            style={{ marginRight: 12, color: '#fff', cursor: 'pointer', fontSize: '20px' }} 
+            onClick={() => navigate(-1)} 
+          />
+          <h2 style={{ margin: 0, color: '#fff', fontWeight: '700', fontSize: '24px' }}>Menu Management</h2>
         </div>
         <button 
           style={{ 
@@ -174,7 +185,9 @@ export default function MenuPage() {
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: '8px'
+            gap: '8px',
+            fontWeight: '600',
+            fontSize: '14px'
           }} 
           onClick={() => setShowForm(!showForm)}
         >
@@ -184,13 +197,31 @@ export default function MenuPage() {
 
       {/* Messages */}
       {success && (
-        <div style={{ padding: '12px 16px', background: '#d4edda', color: '#155724', borderRadius: '8px', marginBottom: '20px' }}>
+        <div style={{ 
+          padding: '12px 16px', 
+          background: '#d4edda', 
+          color: '#155724', 
+          borderRadius: '8px', 
+          marginBottom: '20px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
+        }}>
           <FaCheck /> {success}
         </div>
       )}
 
       {error && (
-        <div style={{ padding: '12px 16px', background: '#f8d7da', color: '#721c24', borderRadius: '8px', marginBottom: '20px' }}>
+        <div style={{ 
+          padding: '12px 16px', 
+          background: '#f8d7da', 
+          color: '#721c24', 
+          borderRadius: '8px', 
+          marginBottom: '20px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
+        }}>
           <FaTimes /> {error}
         </div>
       )}
@@ -199,7 +230,7 @@ export default function MenuPage() {
       <div style={{ position: 'relative', marginBottom: '20px' }}>
         <input
           type="text"
-          placeholder="Search items..."
+          placeholder="Search items by name or category..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           style={{
@@ -208,7 +239,8 @@ export default function MenuPage() {
             borderRadius: '25px',
             border: 'none',
             backgroundColor: '#fff',
-            fontSize: '14px'
+            fontSize: '14px',
+            outline: 'none'
           }}
         />
         <FaSearch style={{
@@ -222,16 +254,29 @@ export default function MenuPage() {
 
       {/* Add Item Form */}
       {showForm && (
-        <div style={{ background: '#fff', padding: 24, borderRadius: '12px', marginBottom: 30 }}>
-          <h3 style={{ marginBottom: 20 }}>
+        <div style={{ 
+          background: '#fff', 
+          padding: 24, 
+          borderRadius: '12px', 
+          marginBottom: 30,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+        }}>
+          <h3 style={{ marginBottom: 20, color: '#333', display: 'flex', alignItems: 'center', gap: '8px' }}>
             {editing ? <><FaEdit /> Update Item</> : <><FaPlus /> Add New Item</>}
           </h3>
 
           <div style={{ display: 'grid', gap: 16, marginBottom: 16 }}>
             <div>
-              <label style={{ display: 'block', marginBottom: 8, fontWeight: '600' }}>Item Name *</label>
+              <label style={{ display: 'block', marginBottom: 8, fontWeight: '600', color: '#333' }}>Item Name *</label>
               <input
-                style={{ padding: '12px', borderRadius: '8px', border: '1px solid #ddd', width: '100%' }}
+                style={{ 
+                  padding: '12px', 
+                  borderRadius: '8px', 
+                  border: '1px solid #ddd', 
+                  width: '100%',
+                  fontSize: '14px',
+                  outline: 'none'
+                }}
                 placeholder="Enter item name"
                 value={form.name}
                 onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
@@ -240,10 +285,18 @@ export default function MenuPage() {
             
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
               <div>
-                <label style={{ display: 'block', marginBottom: 8, fontWeight: '600' }}>Price *</label>
+                <label style={{ display: 'block', marginBottom: 8, fontWeight: '600', color: '#333' }}>Price *</label>
                 <input
                   type="number"
-                  style={{ padding: '12px', borderRadius: '8px', border: '1px solid #ddd', width: '100%' }}
+                  step="0.01"
+                  style={{ 
+                    padding: '12px', 
+                    borderRadius: '8px', 
+                    border: '1px solid #ddd', 
+                    width: '100%',
+                    fontSize: '14px',
+                    outline: 'none'
+                  }}
                   placeholder="0.00"
                   value={form.price}
                   onChange={e => setForm(f => ({ ...f, price: e.target.value }))}
@@ -251,9 +304,16 @@ export default function MenuPage() {
               </div>
               
               <div>
-                <label style={{ display: 'block', marginBottom: 8, fontWeight: '600' }}>Category</label>
+                <label style={{ display: 'block', marginBottom: 8, fontWeight: '600', color: '#333' }}>Category</label>
                 <select
-                  style={{ padding: '12px', borderRadius: '8px', border: '1px solid #ddd', width: '100%' }}
+                  style={{ 
+                    padding: '12px', 
+                    borderRadius: '8px', 
+                    border: '1px solid #ddd', 
+                    width: '100%',
+                    fontSize: '14px',
+                    outline: 'none'
+                  }}
                   value={form.category}
                   onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
                 >
@@ -265,7 +325,7 @@ export default function MenuPage() {
             </div>
             
             <div>
-              <label style={{ display: 'block', marginBottom: 8, fontWeight: '600' }}>Availability</label>
+              <label style={{ display: 'block', marginBottom: 8, fontWeight: '600', color: '#333' }}>Availability</label>
               <div style={{ display: 'flex', gap: 16 }}>
                 <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
                   <input
@@ -291,11 +351,17 @@ export default function MenuPage() {
             </div>
             
             <div>
-              <label style={{ display: 'block', marginBottom: 8, fontWeight: '600' }}>Image</label>
+              <label style={{ display: 'block', marginBottom: 8, fontWeight: '600', color: '#333' }}>Image</label>
               <input
                 type="file"
                 accept="image/*"
-                style={{ padding: '12px', borderRadius: '8px', border: '1px solid #ddd', width: '100%' }}
+                style={{ 
+                  padding: '12px', 
+                  borderRadius: '8px', 
+                  border: '1px solid #ddd', 
+                  width: '100%',
+                  fontSize: '14px'
+                }}
                 onChange={handleFileChange}
               />
             </div>
@@ -303,28 +369,54 @@ export default function MenuPage() {
 
           {preview && (
             <div style={{ marginBottom: 16 }}>
-              <span style={{ fontSize: 14, fontWeight: '500' }}>Image Preview:</span>
-              <img src={preview} alt="preview" style={{ display: 'block', marginTop: 8, maxWidth: '200px', borderRadius: '8px' }} />
+              <span style={{ fontSize: 14, fontWeight: '500', color: '#333' }}>Image Preview:</span>
+              <img 
+                src={preview} 
+                alt="preview" 
+                style={{ 
+                  display: 'block', 
+                  marginTop: 8, 
+                  maxWidth: '200px', 
+                  maxHeight: '200px',
+                  borderRadius: '8px',
+                  border: '1px solid #ddd'
+                }} 
+              />
             </div>
           )}
 
           <div style={{ display: 'flex', gap: 12 }}>
             <button 
-              style={{ padding: '12px 20px', background: '#28a745', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }} 
+              style={{ 
+                padding: '12px 20px', 
+                background: loading ? '#6c757d' : '#28a745', 
+                color: 'white', 
+                border: 'none', 
+                borderRadius: '8px', 
+                cursor: loading ? 'not-allowed' : 'pointer',
+                fontWeight: '600',
+                fontSize: '14px'
+              }} 
               onClick={submit} 
               disabled={loading}
             >
               {loading ? 'Processing...' : (editing ? 'Update Item' : 'Add Item')}
             </button>
             <button 
-              style={{ padding: '12px 20px', background: '#6c757d', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
-              onClick={() => {
-                setForm({ name: '', price: '', category: 'Breakfast', imageFile: null, isAvailable: true });
-                setPreview(null);
-                setEditing(null);
-                setShowForm(false);
-                setError('');
+              style={{ 
+                padding: '12px 20px', 
+                background: '#6c757d', 
+                color: 'white', 
+                border: 'none', 
+                borderRadius: '8px', 
+                cursor: 'pointer',
+                fontWeight: '600',
+                fontSize: '14px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
               }}
+              onClick={resetForm}
             >
               <FaTimes /> Cancel
             </button>
@@ -333,8 +425,14 @@ export default function MenuPage() {
       )}
 
       {/* Category Filter */}
-      <div style={{ background: '#fff', padding: 20, borderRadius: '12px', marginBottom: 30 }}>
-        <h3 style={{ marginBottom: 16 }}>Filter by Category</h3>
+      <div style={{ 
+        background: '#fff', 
+        padding: 20, 
+        borderRadius: '12px', 
+        marginBottom: 30,
+        boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+      }}>
+        <h3 style={{ marginBottom: 16, color: '#333' }}>Filter by Category</h3>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {categories.map(category => (
             <button
@@ -347,7 +445,9 @@ export default function MenuPage() {
                 background: activeCategory === category ? '#007bff' : '#f8f9fa',
                 color: activeCategory === category ? '#fff' : '#333',
                 cursor: 'pointer',
-                fontWeight: '600'
+                fontWeight: '600',
+                fontSize: '14px',
+                transition: 'all 0.2s'
               }}
             >
               {category}
@@ -360,111 +460,311 @@ export default function MenuPage() {
       <div>
         <h3 style={{ marginBottom: 20, color: '#fff' }}>
           {activeCategory === 'All' ? 'All Menu Items' : `${activeCategory} Items`}
-          <span style={{ fontSize: '14px', color: '#ccc', marginLeft: 8 }}>
-            ({searchedItems.length} items)
+          <span style={{ fontSize: '14px', color: '#ccc', marginLeft: 8, fontWeight: 'normal' }}>
+            ({searchedItems.length} {searchedItems.length === 1 ? 'item' : 'items'})
           </span>
         </h3>
 
         {searchedItems.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 40, color: '#fff' }}>
-            {searchQuery ? 'No items found matching your search.' : 'No items found in this category.'}
+                   <div style={{ 
+            textAlign: 'center', 
+            background: '#fff', 
+            padding: '40px 20px', 
+            borderRadius: '12px',
+            color: '#666'
+          }}>
+            <p style={{ fontSize: '18px', marginBottom: '8px' }}>No items found</p>
+            <p style={{ fontSize: '14px' }}>
+              {searchQuery ? 'Try a different search term' : `No ${activeCategory === 'All' ? '' : activeCategory + ' '}items available`}
+            </p>
+            {items.length === 0 && (
+              <button 
+                style={{ 
+                  marginTop: '16px',
+                  padding: '10px 20px', 
+                  background: '#007bff', 
+                  color: 'white', 
+                  border: 'none', 
+                  borderRadius: '8px', 
+                  cursor: 'pointer',
+                  fontWeight: '600'
+                }}
+                onClick={() => setShowForm(true)}
+              >
+                <FaPlus style={{ marginRight: '8px' }} />
+                Add Your First Item
+              </button>
+            )}
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 20 }}>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+            gap: '20px'
+          }}>
             {searchedItems.map(item => (
               <div key={item._id} style={{
                 background: '#fff',
-                padding: 20,
                 borderRadius: '12px',
-                border: item.isAvailable ? '2px solid #28a745' : '2px solid #dc3545'
+                overflow: 'hidden',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                transition: 'transform 0.2s, box-shadow 0.2s'
+              }} onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 6px 16px rgba(0,0,0,0.15)';
+              }} onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
               }}>
-                {/* Availability badge */}
-                <div style={{
-                  padding: '4px 10px',
-                  borderRadius: '20px',
-                  background: item.isAvailable ? '#28a745' : '#dc3545',
-                  color: 'white',
-                  fontSize: '12px',
-                  fontWeight: 'bold',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  marginBottom: 12
-                }}>
-                  {item.isAvailable ? <FaEye /> : <FaEyeSlash />}
-                  {item.isAvailable ? 'Available' : 'Unavailable'}
-                </div>
-
                 {/* Item Image */}
-                {item.imageUrl && (
-                  <img 
-                    src={`http://localhost:5000${item.imageUrl}`} 
-                    alt={item.name}
-                    style={{
+                <div style={{ 
+                  position: 'relative',
+                  height: '180px',
+                  backgroundColor: '#f8f9fa'
+                }}>
+                  {item.imageUrl ? (
+                    <img 
+                      src={`http://localhost:5000${item.imageUrl}`} 
+                      alt={item.name} 
+                      style={{ 
+                        width: '100%', 
+                        height: '100%', 
+                        objectFit: 'cover',
+                        filter: !item.isAvailable ? 'grayscale(50%)' : 'none'
+                      }} 
+                    />
+                  ) : (
+                    <div style={{ 
+                      height: '100%', 
                       width: '100%',
-                      height: '180px',
-                      objectFit: 'cover',
-                      borderRadius: '8px',
-                      marginBottom: 16
-                    }}
-                  />
-                )}
-
+                      backgroundColor: '#e9ecef',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#adb5bd',
+                      fontSize: '14px'
+                    }}>
+                      No Image Available
+                    </div>
+                  )}
+                  
+                  {/* Availability Badge */}
+                  <div style={{
+                    position: 'absolute',
+                    top: '12px',
+                    left: '12px',
+                    backgroundColor: item.isAvailable ? '#28a745' : '#6c757d',
+                    color: '#fff',
+                    padding: '6px 12px',
+                    borderRadius: '20px',
+                    fontSize: '12px',
+                    fontWeight: 'bold',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}>
+                    {item.isAvailable ? <FaEye size={10} /> : <FaEyeSlash size={10} />}
+                    {item.isAvailable ? 'Available' : 'Unavailable'}
+                  </div>
+                  
+                  {/* Category Badge */}
+                  <div style={{
+                    position: 'absolute',
+                    top: '12px',
+                    right: '12px',
+                    backgroundColor: 'rgba(0, 123, 255, 0.9)',
+                    color: '#fff',
+                    padding: '6px 12px',
+                    borderRadius: '20px',
+                    fontSize: '12px',
+                    fontWeight: 'bold'
+                  }}>
+                    {item.category}
+                  </div>
+                </div>
+                
                 {/* Item Details */}
-                <h4 style={{ margin: '0 0 8px 0' }}>{item.name}</h4>
-                <p style={{ margin: '0 0 8px 0', color: '#666' }}>Category: {item.category}</p>
-                <p style={{ margin: '0 0 16px 0', fontWeight: '700', fontSize: '18px' }}>₱{item.price}</p>
-
-                {/* Action Buttons */}
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button
-                    onClick={() => toggleAvailability(item)}
-                    style={{
-                      padding: '8px 12px',
-                      border: 'none',
-                      background: item.isAvailable ? '#ffc107' : '#28a745',
-                      color: item.isAvailable ? '#000' : '#fff',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      flex: 1
-                    }}
-                  >
-                    {item.isAvailable ? 'Mark Unavailable' : 'Mark Available'}
-                  </button>
+                <div style={{ padding: '20px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                    <h4 style={{ 
+                      margin: 0, 
+                      fontSize: '18px', 
+                      fontWeight: '700',
+                      color: item.isAvailable ? '#333' : '#999'
+                    }}>
+                      {item.name}
+                    </h4>
+                    <span style={{ 
+                      fontSize: '20px', 
+                      fontWeight: '800',
+                      color: item.isAvailable ? '#28a745' : '#bbb'
+                    }}>
+                      ₱{item.price}
+                    </span>
+                  </div>
                   
-                  <button
-                    onClick={() => editItem(item)}
-                    style={{
-                      padding: '8px 12px',
-                      border: 'none',
-                      background: '#007bff',
-                      color: 'white',
-                      borderRadius: '6px',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <FaEdit /> Edit
-                  </button>
+                  <p style={{ 
+                    margin: '0 0 16px', 
+                    fontSize: '14px', 
+                    color: item.isAvailable ? '#666' : '#bbb',
+                    lineHeight: '1.4'
+                  }}>
+                    {item.description || 'No description available'}
+                  </p>
                   
-                  <button
-                    onClick={() => deleteItem(item._id)}
-                    style={{
-                      padding: '8px 12px',
-                      border: 'none',
-                      background: '#dc3545',
-                      color: 'white',
-                      borderRadius: '6px',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <FaTrash /> Delete
-                  </button>
+                  {/* Action Buttons */}
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <button
+                      onClick={() => editItem(item)}
+                      style={{
+                        flex: 1,
+                        padding: '10px 16px',
+                        background: '#007bff',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        fontWeight: '600',
+                        fontSize: '14px',
+                        transition: 'background 0.2s'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = '#0056b3'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = '#007bff'}
+                    >
+                      <FaEdit size={14} />
+                      Edit
+                    </button>
+                    
+                    <button
+                      onClick={() => toggleAvailability(item)}
+                      style={{
+                        padding: '10px 16px',
+                        background: item.isAvailable ? '#ffc107' : '#28a745',
+                        color: '#212529',
+                        border: 'none',
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        fontWeight: '600',
+                        fontSize: '14px',
+                        transition: 'background 0.2s'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = item.isAvailable ? '#e0a800' : '#218838'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = item.isAvailable ? '#ffc107' : '#28a745'}
+                    >
+                      {item.isAvailable ? <FaEyeSlash size={14} /> : <FaEye size={14} />}
+                      {item.isAvailable ? 'Hide' : 'Show'}
+                    </button>
+                    
+                    <button
+                      onClick={() => deleteItem(item._id)}
+                      style={{
+                        padding: '10px 16px',
+                        background: '#dc3545',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        fontWeight: '600',
+                        fontSize: '14px',
+                        transition: 'background 0.2s'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = '#c82333'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = '#dc3545'}
+                    >
+                      <FaTrash size={14} />
+                      Delete
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {/* Statistics Summary */}
+      <div style={{ 
+        marginTop: '30px', 
+        background: '#fff', 
+        padding: '20px', 
+        borderRadius: '12px',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+      }}>
+        <h3 style={{ marginBottom: '16px', color: '#333' }}>Menu Statistics</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '15px' }}>
+          <div style={{ textAlign: 'center', padding: '15px', background: '#f8f9fa', borderRadius: '8px' }}>
+            <div style={{ fontSize: '24px', fontWeight: '800', color: '#007bff' }}>{items.length}</div>
+            <div style={{ fontSize: '14px', color: '#666' }}>Total Items</div>
+          </div>
+          <div style={{ textAlign: 'center', padding: '15px', background: '#f8f9fa', borderRadius: '8px' }}>
+            <div style={{ fontSize: '24px', fontWeight: '800', color: '#28a745' }}>
+              {items.filter(item => item.isAvailable).length}
+            </div>
+            <div style={{ fontSize: '14px', color: '#666' }}>Available</div>
+          </div>
+          <div style={{ textAlign: 'center', padding: '15px', background: '#f8f9fa', borderRadius: '8px' }}>
+            <div style={{ fontSize: '24px', fontWeight: '800', color: '#dc3545' }}>
+              {items.filter(item => !item.isAvailable).length}
+            </div>
+            <div style={{ fontSize: '14px', color: '#666' }}>Unavailable</div>
+          </div>
+          <div style={{ textAlign: 'center', padding: '15px', background: '#f8f9fa', borderRadius: '8px' }}>
+            <div style={{ fontSize: '24px', fontWeight: '800', color: '#6f42c1' }}>
+              {new Set(items.map(item => item.category)).size}
+            </div>
+            <div style={{ fontSize: '14px', color: '#666' }}>Categories</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Empty state encouragement */}
+      {items.length === 0 && !showForm && (
+        <div style={{ 
+          textAlign: 'center', 
+          background: '#fff', 
+          padding: '40px 20px', 
+          borderRadius: '12px',
+          marginTop: '20px'
+        }}>
+          <div style={{ fontSize: '48px', color: '#007bff', marginBottom: '16px' }}>🍽️</div>
+          <h3 style={{ color: '#333', marginBottom: '8px' }}>Your menu is empty</h3>
+          <p style={{ color: '#666', marginBottom: '20px' }}>
+            Start by adding your first menu item to get your restaurant online!
+          </p>
+          <button 
+            style={{ 
+              padding: '12px 24px', 
+              background: '#007bff', 
+              color: 'white', 
+              border: 'none', 
+              borderRadius: '8px', 
+              cursor: 'pointer',
+              fontWeight: '600',
+              fontSize: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              margin: '0 auto'
+            }}
+            onClick={() => setShowForm(true)}
+          >
+            <FaPlus />
+            Add Your First Item
+          </button>
+        </div>
+      )}
     </div>
   );
 }

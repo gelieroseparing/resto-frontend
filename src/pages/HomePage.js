@@ -96,10 +96,10 @@ export default function HomePage() {
     const notification = document.createElement('div');
     notification.textContent = `Added ${item.name} to cart!`;
     notification.style.position = 'fixed';
-    notification.style.top: '20px';
-    notification.style.right: '20px';
+    notification.style.top = '20px'; // Fixed: removed colon
+    notification.style.right = '20px'; // Fixed: removed colon
     notification.style.backgroundColor = '#10b981';
-    notification.style.color: 'white';
+    notification.style.color = 'white';
     notification.style.padding = '10px 20px';
     notification.style.borderRadius = '10px';
     notification.style.zIndex = '1000';
@@ -116,7 +116,7 @@ export default function HomePage() {
     : items
   ).filter(item => 
     item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    item.category.toLowerCase().includes(searchQuery.toLowerCase())
+    (item.category && item.category.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   // Get profile image URL
@@ -128,6 +128,15 @@ export default function HomePage() {
       return `http://localhost:5000${user.profileImage}`;
     }
     return '/profile.jpg';
+  };
+
+  // Improved image error handling
+  const handleImageError = (e) => {
+    e.target.style.display = 'none';
+    const fallback = e.target.nextSibling;
+    if (fallback && fallback.style) {
+      fallback.style.display = 'flex';
+    }
   };
 
   return (
@@ -193,7 +202,7 @@ export default function HomePage() {
                 fontSize: '10px',
                 fontWeight: 'bold'
               }}>
-                {cart.length}
+                {cart.reduce((total, item) => total + item.quantity, 0)}
               </span>
             )}
           </div>
@@ -210,7 +219,8 @@ export default function HomePage() {
               backgroundColor: '#f0f0f0',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center'
+              justifyContent: 'center',
+              position: 'relative'
             }}
             onClick={() => nav('/profile')}
           >
@@ -222,17 +232,13 @@ export default function HomePage() {
                 height: '100%', 
                 objectFit: 'cover' 
               }}
-              onError={(e) => {
-                e.target.style.display = 'none';
-                e.target.nextSibling.style.display = 'flex';
-              }}
+              onError={handleImageError}
             />
             <span style={{ 
               display: 'none', 
               color: '#333', 
               fontWeight: 'bold', 
-              fontSize: '18px',
-              position: 'absolute'
+              fontSize: '18px'
             }}>
               {user?.username?.charAt(0)?.toUpperCase() || 'U'}
             </span>
@@ -332,11 +338,11 @@ export default function HomePage() {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
                 <FaStar color="#ffc107" />
                 <p style={{ fontSize: '18px', fontWeight: '800', margin: 0, color: '#333' }}>
-                  {bestFood.rating}
+                  {bestFood.rating.toFixed(1)}
                 </p>
               </div>
             )}
-            <p style={{ fontSize: '12px', margin: '5px 0 0', color: '#666', fontWeight: '600' }}>
+            <p style={{ fontSize: '12px', margin: '5px 0 0', color: '#666', fontWeight: '600', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {bestFood.name}
             </p>
           </div>
@@ -394,6 +400,10 @@ export default function HomePage() {
                     objectFit: 'cover',
                     filter: !it.isAvailable ? 'grayscale(50%)' : 'none'
                   }} 
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                    e.target.nextSibling.style.display = 'flex';
+                  }}
                 />
               ) : (
                 <div style={{ 
@@ -484,11 +494,11 @@ export default function HomePage() {
                   fontWeight: '800', 
                   color: !it.isAvailable ? '#bbb' : '#333',
                   fontSize: '15px'
-                }}>₱{it.price}</p>
+                }}>₱{parseFloat(it.price).toFixed(2)}</p>
                 {it.rating && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '2px', fontSize: '11px', color: '#ffc107' }}>
                     <FaStar size={10} />
-                    <span>{it.rating}</span>
+                    <span>{it.rating.toFixed(1)}</span>
                   </div>
                 )}
               </div>
@@ -563,7 +573,7 @@ export default function HomePage() {
               fontSize: '10px',
               fontWeight: 'bold'
             }}>
-              {cart.length}
+              {cart.reduce((total, item) => total + item.quantity, 0)}
             </span>
           )}
         </button>
