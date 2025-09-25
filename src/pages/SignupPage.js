@@ -5,7 +5,7 @@ import backgroundImage from '../assets/images/Background.jpg';
 
 export default function SignupPage() {
   const nav = useNavigate();
-  const [form, setForm] = useState({ username: '', password: '', confirm: '', position: 'cashier' });
+  const [form, setForm] = useState({ username: '', password: '', confirm: '', position: ' ' });
   const [msg, setMsg] = useState('');
 
   const handle = (e) => {

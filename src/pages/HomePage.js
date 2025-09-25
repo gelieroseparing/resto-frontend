@@ -9,47 +9,48 @@ export default function HomePage() {
   const nav = useNavigate();
 
   const [items, setItems] = useState([]);
-  const [orders, setOrders] = useState([]);
   const [soldOutCount, setSoldOutCount] = useState(0);
   const [bestFood, setBestFood] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [cart, setCart] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Create axios instance with auth header
   const api = axios.create({
-    baseURL: 'http://localhost:5000',
+    baseURL: 'http://localhost:5000/api',
     headers: token ? { Authorization: `Bearer ${token}` } : {}
   });
 
   const categories = ['All', 'Drinks', 'Breakfast', 'Dessert', 'Lunch', 'Dinner', 'Snack'];
 
-  // ✅ fetch both items and orders
   const loadData = useCallback(async () => {
     try {
-      const [itemsRes, ordersRes] = await Promise.all([
-        api.get("/api/items"),
-        api.get("/api/orders")
-      ]);
+      const res = await api.get('/items');
+      const allItems = res.data;
+      setItems(allItems);
 
-      setItems(itemsRes.data);
-      setOrders(ordersRes.data);
+      // Calculate unavailable items
+      const unavailableItems = allItems.filter(item => !item.isAvailable);
+      setSoldOutCount(unavailableItems.length);
 
-      // sold out + best food (same as before)
-      const soldOutItems = itemsRes.data.filter(item => item.stock === 0);
-      setSoldOutCount(soldOutItems.length);
-
-      const availableItems = itemsRes.data.filter(item => item.isAvailable);
-      const best = availableItems.reduce((prev, current) => {
-        return (prev.rating || 0) > (current.rating || 0) ? prev : current;
-      }, {});
-      setBestFood(best);
-
+      // Find the best rated available item
+      const availableItems = allItems.filter(item => item.isAvailable);
+      if (availableItems.length > 0) {
+        const best = availableItems.reduce((prev, current) => {
+          return (prev.rating || 0) > (current.rating || 0) ? prev : current;
+        });
+        setBestFood(best.rating ? best : availableItems[0]);
+      } else {
+        setBestFood(null);
+      }
     } catch (err) {
-      console.error("Failed to load data", err);
+      console.error('Failed to load items', err);
     }
   }, [api]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { 
+    loadData(); 
+  }, [loadData]);
 
   const handleCategoryClick = (category) => {
     setSelectedCategory(category === 'All' ? null : category);
@@ -57,7 +58,7 @@ export default function HomePage() {
 
   // Add item to cart
   const addToCart = (item, e) => {
-    e.stopPropagation();
+    if (e) e.stopPropagation();
     
     // Check if item is available
     if (!item.isAvailable) {
@@ -71,7 +72,6 @@ export default function HomePage() {
       notification.style.padding = '10px 20px';
       notification.style.borderRadius = '10px';
       notification.style.zIndex = '1000';
-      notification.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
       document.body.appendChild(notification);
       
       setTimeout(() => {
@@ -96,14 +96,13 @@ export default function HomePage() {
     const notification = document.createElement('div');
     notification.textContent = `Added ${item.name} to cart!`;
     notification.style.position = 'fixed';
-    notification.style.top = '20px';
-    notification.style.right = '20px';
-    notification.style.backgroundColor = '#223dc5ff';
-    notification.style.color = 'white';
+    notification.style.top: '20px';
+    notification.style.right: '20px';
+    notification.style.backgroundColor = '#10b981';
+    notification.style.color: 'white';
     notification.style.padding = '10px 20px';
     notification.style.borderRadius = '10px';
     notification.style.zIndex = '1000';
-    notification.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
     document.body.appendChild(notification);
     
     setTimeout(() => {
@@ -120,13 +119,24 @@ export default function HomePage() {
     item.category.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // Get profile image URL
+  const getProfileImageUrl = () => {
+    if (user?.profileImage) {
+      if (user.profileImage.startsWith('http')) {
+        return user.profileImage;
+      }
+      return `http://localhost:5000${user.profileImage}`;
+    }
+    return '/profile.jpg';
+  };
+
   return (
     <div style={{
       padding: '20px 16px 70px',
       minHeight: '100vh',
       background: '#790707ff',
-      fontFamily: "'New Times Roman', sans-serif",
-      color: '#1a191dff'
+      fontFamily: "'Arial', sans-serif",
+      color: '#fff'
     }}>
       {/* Header */}
       <div style={{
@@ -139,11 +149,10 @@ export default function HomePage() {
         <div>
           <h1 style={{ 
             fontSize: '1.8rem', 
-            color: '#e2e0ebff', 
+            color: '#fff', 
             fontWeight: '800', 
-            margin: 0,
-            fontFamily: "'Pacifico', cursive"
-          }}> Restaurant</h1>
+            margin: 0
+          }}>Restaurant POS</h1>
           <p style={{ 
             margin: 0, 
             color: '#e6dedeff', 
@@ -158,17 +167,16 @@ export default function HomePage() {
             style={{ 
               position: 'relative', 
               cursor: 'pointer',
-              backgroundColor: 'rgba(206, 191, 191, 0.7)',
+              backgroundColor: 'rgba(255, 255, 255, 0.2)',
               padding: '10px',
               borderRadius: '50%',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+              justifyContent: 'center'
             }}
             onClick={() => nav('/order', { state: { cartItems: cart } })}
           >
-            <FaShoppingBasket size={30} color="#2559dbff" />
+            <FaShoppingBasket size={24} color="#fff" />
             {cart.length > 0 && (
               <span style={{
                 position: 'absolute',
@@ -199,7 +207,6 @@ export default function HomePage() {
               overflow: 'hidden',
               cursor: 'pointer',
               border: '3px solid #ff6b93',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
               backgroundColor: '#f0f0f0',
               display: 'flex',
               alignItems: 'center',
@@ -207,38 +214,34 @@ export default function HomePage() {
             }}
             onClick={() => nav('/profile')}
           >
-            {user?.profileImage ? (
-              <img 
-                src={
-                  user.profileImage.startsWith('http') 
-                    ? user.profileImage 
-                    : `http://localhost:5000${user.profileImage}`
-                } 
-                alt="Profile" 
-                style={{ 
-                  width: '100%', 
-                  height: '100%', 
-                  objectFit: 'cover' 
-                }}
-                onError={(e) => {
-                  // If image fails to load, show fallback
-                  e.target.style.display = 'none';
-                }}
-              />
-            ) : (
-              <span style={{ color: '#0a090dff', fontWeight: 'bold', fontSize: '18px' }}>
-                {user?.name?.charAt(0) || 'U'}
-              </span>
-            )}
+            <img 
+              src={getProfileImageUrl()} 
+              alt="Profile" 
+              style={{ 
+                width: '100%', 
+                height: '100%', 
+                objectFit: 'cover' 
+              }}
+              onError={(e) => {
+                e.target.style.display = 'none';
+                e.target.nextSibling.style.display = 'flex';
+              }}
+            />
+            <span style={{ 
+              display: 'none', 
+              color: '#333', 
+              fontWeight: 'bold', 
+              fontSize: '18px',
+              position: 'absolute'
+            }}>
+              {user?.username?.charAt(0)?.toUpperCase() || 'U'}
+            </span>
           </div>
         </div>
       </div>
 
       {/* Search Bar */}
-      <div style={{
-        position: 'relative',
-        marginBottom: '20px'
-      }}>
+      <div style={{ position: 'relative', marginBottom: '20px' }}>
         <input
           type="text"
           placeholder="Search food or category..."
@@ -249,20 +252,18 @@ export default function HomePage() {
             padding: '12px 16px 12px 40px',
             borderRadius: '25px',
             border: 'none',
-            backgroundColor: 'rgba(255,255,255,0.8)',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-            fontSize: '14px'
+            backgroundColor: 'rgba(255,255,255,0.9)',
+            fontSize: '14px',
+            outline: 'none'
           }}
         />
-        <FaSearch 
-          style={{
-            position: 'absolute',
-            left: '15px',
-            top: '50%',
-            transform: 'translateY(-50%)',
-            color: '#585353ff'
-          }} 
-        />
+        <FaSearch style={{
+          position: 'absolute',
+          left: '15px',
+          top: '50%',
+          transform: 'translateY(-50%)',
+          color: '#666'
+        }} />
       </div>
 
       {/* Category Buttons */}
@@ -282,13 +283,12 @@ export default function HomePage() {
               borderRadius: '20px',
               border: 'none',
               backgroundColor: selectedCategory === (cat === 'All' ? null : cat) ? '#ff6b93' : 'rgba(255,255,255,0.8)',
-              color: selectedCategory === (cat === 'All' ? null : cat) ? '#fff' : '#030503ff',
+              color: selectedCategory === (cat === 'All' ? null : cat) ? '#fff' : '#333',
               cursor: 'pointer',
               fontWeight: '600',
               fontSize: '13px',
               whiteSpace: 'nowrap',
-              boxShadow: '0 2px 5px rgba(0,0,0,0.1)',
-              transition: 'all 0.2s ease'
+              flexShrink: 0
             }}
           >
             {cat}
@@ -306,37 +306,37 @@ export default function HomePage() {
       }}>
         {/* Sold Out Items */}
         <div style={{
-          background: 'rgba(255,255,255,0.7)',
+          background: 'rgba(255,255,255,0.9)',
           padding: '15px',
           borderRadius: '18px',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
           minWidth: '140px',
           textAlign: 'center',
           flexShrink: 0
         }}>
-          <h3 style={{ margin: '0 0 8px', fontSize: '14px', color: '#060607ff' }}>Sold Out</h3>
-          <p style={{ fontSize: '26px', fontWeight: '800', margin: 0, color: '#f6f2f2ff' }}>{soldOutCount}</p>
+          <h3 style={{ margin: '0 0 8px', fontSize: '14px', color: '#333' }}>Unavailable</h3>
+          <p style={{ fontSize: '26px', fontWeight: '800', margin: 0, color: '#dc3545' }}>{soldOutCount}</p>
         </div>
         
         {/* Best Food */}
         {bestFood && (
           <div style={{
-            background: 'rgba(255,255,255,0.7)',
+            background: 'rgba(255,255,255,0.9)',
             padding: '15px',
             borderRadius: '18px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
             minWidth: '140px',
             textAlign: 'center',
             flexShrink: 0
           }}>
-            <h3 style={{ margin: '0 0 8px', fontSize: '14px', color: '#0e0c15ff' }}>Best Rated</h3>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-              <FaStar color="#ffc107" />
-              <p style={{ fontSize: '18px', fontWeight: '800', margin: 0, color: '#4a4a4a' }}>
-                {bestFood.rating || 'N/A'}
-              </p>
-            </div>
-            <p style={{ fontSize: '12px', margin: '5px 0 0', color: '#0b0a0fff', fontWeight: '600' }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: '14px', color: '#333' }}>Featured</h3>
+            {bestFood.rating && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                <FaStar color="#ffc107" />
+                <p style={{ fontSize: '18px', fontWeight: '800', margin: 0, color: '#333' }}>
+                  {bestFood.rating}
+                </p>
+              </div>
+            )}
+            <p style={{ fontSize: '12px', margin: '5px 0 0', color: '#666', fontWeight: '600' }}>
               {bestFood.name}
             </p>
           </div>
@@ -356,37 +356,32 @@ export default function HomePage() {
             style={{
               background: '#fff',
               borderRadius: '18px',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
               overflow: 'hidden',
-              transition: 'transform 0.2s, box-shadow 0.2s',
               cursor: it.isAvailable ? 'pointer' : 'not-allowed',
               position: 'relative',
-              opacity: it.isAvailable ? 1 : 0.7
+              opacity: it.isAvailable ? 1 : 0.7,
+              transition: 'transform 0.2s',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
             }}
             onClick={() => {
               if (it.isAvailable) {
                 nav('/order', { state: { preselect: it } });
               }
             }}
-            onMouseEnter={e => {
+            onMouseEnter={(e) => {
               if (it.isAvailable) {
-                e.currentTarget.style.transform = 'translateY(-5px)';
-                e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.12)';
+                e.currentTarget.style.transform = 'translateY(-2px)';
               }
             }}
-            onMouseLeave={e => {
+            onMouseLeave={(e) => {
               if (it.isAvailable) {
                 e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)';
               }
             }}
           >
             <div style={{ 
               position: 'relative',
               height: '140px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
               backgroundColor: '#f9f7fe'
             }}>
               {it.imageUrl ? (
@@ -426,37 +421,24 @@ export default function HomePage() {
                   padding: '4px 8px',
                   borderRadius: '8px',
                   fontSize: '10px',
-                  fontWeight: 'bold'
+                  fontWeight: 'bold',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
                 }}>
-                  <FaEyeSlash size={10} style={{ marginRight: '4px' }} />
-                  Unavailable
+                  <FaEyeSlash size={10} /> Unavailable
                 </div>
-              )}
-              
-              {/* Sold Out Indicator */}
-              {it.stock === 0 && (
-                <div style={{
-                  position: 'absolute',
-                  top: '8px',
-                  right: '8px',
-                  backgroundColor: 'rgba(255,107,107,0.9)',
-                  color: '#fff',
-                  padding: '4px 8px',
-                  borderRadius: '8px',
-                  fontSize: '10px',
-                  fontWeight: 'bold'
-                }}>Sold Out</div>
               )}
               
               {/* Add to Cart Button */}
               <button
                 onClick={(e) => addToCart(it, e)}
-                disabled={it.stock === 0 || !it.isAvailable}
+                disabled={!it.isAvailable}
                 style={{
                   position: 'absolute',
                   bottom: '10px',
                   right: '10px',
-                  backgroundColor: it.stock === 0 || !it.isAvailable ? '#ccc' : '#7b68ee',
+                  backgroundColor: !it.isAvailable ? '#ccc' : '#007bff',
                   color: '#fff',
                   border: 'none',
                   borderRadius: '50%',
@@ -465,20 +447,17 @@ export default function HomePage() {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  cursor: it.stock === 0 || !it.isAvailable ? 'not-allowed' : 'pointer',
-                  boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
-                  zIndex: 10,
+                  cursor: !it.isAvailable ? 'not-allowed' : 'pointer',
                   transition: 'transform 0.2s'
                 }}
-                onMouseEnter={e => {
-                  if (it.stock !== 0 && it.isAvailable) {
+                onMouseEnter={(e) => {
+                  if (it.isAvailable) {
                     e.currentTarget.style.transform = 'scale(1.1)';
                   }
                 }}
-                onMouseLeave={e => {
+                onMouseLeave={(e) => {
                   e.currentTarget.style.transform = 'scale(1)';
                 }}
-                title={it.stock === 0 ? 'Out of stock' : !it.isAvailable ? 'Unavailable' : 'Add to cart'}
               >
                 <FaPlus size={12} />
               </button>
@@ -488,36 +467,26 @@ export default function HomePage() {
                 margin: '0 0 4px', 
                 fontWeight: '700', 
                 fontSize: '14px',
+                color: !it.isAvailable ? '#999' : '#000',
                 whiteSpace: 'nowrap',
                 overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                color: !it.isAvailable ? '#999' : '#000'
+                textOverflow: 'ellipsis'
               }}>{it.name}</h4>
               <p style={{ 
                 margin: '0 0 6px', 
                 fontSize: '11px', 
-                color: !it.isAvailable ? '#bbb' : '#050407ff', 
-                fontWeight: '600' 
+                color: !it.isAvailable ? '#bbb' : '#666',
+                fontWeight: '600'
               }}>{it.category}</p>
-              <div style={{ 
-                display: 'flex', 
-                justifyContent: 'space-between', 
-                alignItems: 'center' 
-              }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <p style={{ 
                   margin: 0, 
                   fontWeight: '800', 
-                  color: !it.isAvailable ? '#bbb' : '#4a4a4a',
+                  color: !it.isAvailable ? '#bbb' : '#333',
                   fontSize: '15px'
                 }}>₱{it.price}</p>
                 {it.rating && (
-                  <div style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: '2px',
-                    fontSize: '11px',
-                    color: '#ffc107'
-                  }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '2px', fontSize: '11px', color: '#ffc107' }}>
                     <FaStar size={10} />
                     <span>{it.rating}</span>
                   </div>
@@ -529,52 +498,11 @@ export default function HomePage() {
       </div>
 
       {filteredItems.length === 0 && (
-        <div style={{
-          textAlign: 'center',
-          padding: '40px 20px',
-          color: '#edebf5ff'
-        }}>
+        <div style={{ textAlign: 'center', padding: '40px 20px', color: '#fff' }}>
           <p style={{ fontSize: '18px', fontWeight: '600' }}>No items found</p>
           <p style={{ fontSize: '14px' }}>Try a different search or category</p>
         </div>
       )}
-
-      {/* Recent Orders Section */}
-      <div style={{ marginTop: "40px" }}>
-        <h2 style={{ color: "#fff", marginBottom: "10px" }}>Recent Orders</h2>
-        {orders.length === 0 ? (
-          <p style={{ color: "#ddd" }}>No orders found</p>
-        ) : (
-          <div style={{ 
-            display: "flex", 
-            flexDirection: "column", 
-            gap: "12px" 
-          }}>
-            {orders.map(order => (
-              <div key={order._id} style={{
-                background: "rgba(255,255,255,0.8)",
-                padding: "12px",
-                borderRadius: "10px",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.1)"
-              }}>
-                <p style={{ margin: 0, fontWeight: "600", color: "#111" }}>
-                  {order.user?.name || "Unknown User"}
-                </p>
-                <p style={{ margin: "4px 0", fontSize: "13px", color: "#333" }}>
-                  {new Date(order.createdAt).toLocaleString()}
-                </p>
-                <ul style={{ margin: "8px 0 0", paddingLeft: "16px", color: "#444" }}>
-                  {order.items.map(it => (
-                    <li key={it._id}>
-                      {it.item?.name} × {it.quantity}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
 
       {/* Bottom Navigation */}
       <div style={{
@@ -583,11 +511,11 @@ export default function HomePage() {
         left: 0,
         width: '100%',
         backgroundColor: '#fff',
-        borderTop: '1px solid #f0f0f0',
+        borderTop: '1px solid #ddd',
         display: 'flex',
         justifyContent: 'space-around',
         padding: '12px 0',
-        boxShadow: '0 -2px 10px rgba(0,0,0,0.05)'
+        boxShadow: '0 -2px 10px rgba(0,0,0,0.1)'
       }}>
         <button 
           onClick={() => nav('/home')} 
@@ -601,8 +529,8 @@ export default function HomePage() {
             gap: '4px'
           }}
         >
-          <FaHome size={20} color="#7b68ee" />
-          <span style={{ fontSize: '10px', color: '#7b68ee' }}>Home</span>
+          <FaHome size={20} color="#007bff" />
+          <span style={{ fontSize: '10px', color: '#007bff' }}>Home</span>
         </button>
         <button 
           onClick={() => nav('/order', { state: { cartItems: cart } })} 
@@ -624,7 +552,7 @@ export default function HomePage() {
               position: 'absolute',
               top: '-5px',
               right: '-5px',
-              backgroundColor: '#ff6b6b',
+              backgroundColor: '#dc3545',
               color: 'white',
               borderRadius: '50%',
               width: '16px',
