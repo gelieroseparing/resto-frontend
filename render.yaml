@@ -7,7 +7,7 @@ services:
     buildCommand: npm install && npm run build
     envVars:
       - key: REACT_APP_API_URL
-        value: https://resto-backend-0wwz.onrender.com/api
+        value: https://resto-backend-0wwz.onrender.com
     routes:
       - type: static
         path: /

@@ -1,6 +1,6 @@
 import axios from "axios";
 
-// ✅ Detect API base URL
+// Detect API base URL
 const baseURL =
   process.env.REACT_APP_API_URL ||
   (window.location.hostname === "localhost"
@@ -9,7 +9,7 @@ const baseURL =
 
 const API = axios.create({ baseURL });
 
-// ✅ Automatically attach token to every request if available
+// Attach token automatically
 API.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem("token");
@@ -21,14 +21,10 @@ API.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// ===== Auth APIs =====
+// Export your API calls
 export const signup = (userData) => API.post("/auth/signup", userData);
 export const login = (userData) => API.post("/auth/login", userData);
-
-// ===== User APIs =====
 export const getProfile = () => API.get("/users/profile");
-
-// ===== Order APIs =====
 export const createOrder = (orderData) => API.post("/orders", orderData);
 export const getOrders = () => API.get("/orders");
 

@@ -1,30 +1,37 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom'; // Added Link import
-import api from '../services/api'; // Your shared API instance
+import { useNavigate, Link } from 'react-router-dom';
+import api from '../services/api'; // your shared API
 import backgroundImage from '../assets/images/Background.jpg';
 
 export default function SignupPage() {
   const nav = useNavigate();
-  const [form, setForm] = useState({ username: '', password: '', confirm: '', position: ' ' });
+  const [form, setForm] = useState({ username: '', password: '', confirm: '', position: 'cashier' });
   const [msg, setMsg] = useState('');
+  const [profileImage, setProfileImage] = useState(null);
 
   const handle = (e) => {
     setForm(f => ({ ...f, [e.target.name]: e.target.value }));
   };
-
+  const handleFile = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      setProfileImage(e.target.files[0]);
+    }
+  };
   const submit = async () => {
-    setMsg(''); // Clear previous messages
-
-    // Basic validation
+    setMsg('');
     if (!form.username || !form.password || !form.confirm) {
       return setMsg('All fields are required');
     }
     if (form.password !== form.confirm) {
       return setMsg('Passwords do not match');
     }
-
+    const data = new FormData();
+    data.append('username', form.username);
+    data.append('password', form.password);
+    data.append('position', form.position);
+    if (profileImage) data.append('profileImage', profileImage);
     try {
-      const response = await api.post('/signup', form);
+      const response = await api.post('/auth/signup', data);
       if (response.status === 201) {
         setMsg('Signup successful! Redirecting...');
         setTimeout(() => {
@@ -39,78 +46,35 @@ export default function SignupPage() {
     }
   };
 
-  // Inline styles
-  const containerStyle = {
-    backgroundImage: `url(${backgroundImage})`,
-    backgroundSize: 'cover',
-    backgroundPosition: 'center',
-    minHeight: '100vh',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  };
-
-  const formBoxStyle = {
-    maxWidth: '400px',
-    width: '90%',
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    padding: '2rem',
-    borderRadius: '15px',
-    boxShadow: '0 8px 20px rgba(0,0,0,0.2)',
-  };
-
-  const titleStyle = {
-    textAlign: 'center',
-    marginBottom: '1.5rem',
-    color: '#e546b5ff',
-    fontSize: '2rem',
-    fontWeight: 700,
-  };
-
-  const msgStyle = {
-    textAlign: 'center',
-    color: msg.includes('failed') ? '#ef4444' : '#16a34a',
-    fontWeight: 600,
-    marginBottom: '1rem',
-    fontSize: '1rem',
-  };
-
-  const inputStyle = {
-    padding: '0.75rem 1rem',
-    marginBottom: '1rem',
-    borderRadius: '8px',
-    border: '1px solid #ccc',
-    fontSize: '1rem',
-  };
-
-  const selectStyle = {
-    ...inputStyle,
-    backgroundColor: '#fff',
-  };
-
-  const buttonStyle = {
-    width: '100%',
-    padding: '0.75rem',
-    backgroundColor: '#e546b5ff',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '8px',
-    fontSize: '1.1rem',
-    fontWeight: 600,
-    cursor: 'pointer',
-    transition: 'transform 0.2s, box-shadow 0.2s',
-  };
-
   return (
-    <div style={containerStyle}>
-      <div style={formBoxStyle}>
-        <h2 style={titleStyle}>Create Your Account</h2>
+    <div style={{
+      backgroundImage: `url(${backgroundImage})`,
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      minHeight: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+    }}>
+      <div style={{
+        maxWidth: 400,
+        width: '90%',
+        backgroundColor: 'rgba(255,255,255,0.9)',
+        padding: '2rem',
+        borderRadius: '15px',
+        boxShadow: '0 8px 20px rgba(0,0,0,0.2)',
+      }}>
+        <h2 style={{ textAlign: 'center', marginBottom: '1.5rem', color: '#e546b5ff', fontSize: '2rem', fontWeight: 700 }}>
+          Create Your Account
+        </h2>
         {msg && (
-          <p style={msgStyle}>{msg}</p>
+          <p style={{ textAlign: 'center', color: msg.includes('failed') ? '#ef4444' : '#16a34a', fontWeight: 600, marginBottom: '1rem', fontSize: '1rem' }}>
+            {msg}
+          </p>
         )}
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           <input
-            style={inputStyle}
+            style={{ padding: '0.75rem 1rem', marginBottom: '1rem', borderRadius: 8, border: '1px solid #ccc', fontSize: '1rem' }}
             type="text"
             placeholder="Username"
             name="username"
@@ -118,7 +82,7 @@ export default function SignupPage() {
             onChange={handle}
           />
           <input
-            style={inputStyle}
+            style={{ padding: '0.75rem 1rem', marginBottom: '1rem', borderRadius: 8, border: '1px solid #ccc', fontSize: '1rem' }}
             type="password"
             placeholder="Password"
             name="password"
@@ -126,7 +90,7 @@ export default function SignupPage() {
             onChange={handle}
           />
           <input
-            style={inputStyle}
+            style={{ padding: '0.75rem 1rem', marginBottom: '1rem', borderRadius: 8, border: '1px solid #ccc', fontSize: '1rem' }}
             type="password"
             placeholder="Confirm Password"
             name="confirm"
@@ -134,7 +98,7 @@ export default function SignupPage() {
             onChange={handle}
           />
           <select
-            style={selectStyle}
+            style={{ ...{ padding: '0.75rem 1rem', marginBottom: '1rem', borderRadius: 8, border: '1px solid #ccc', fontSize: '1rem' } }}
             name="position"
             value={form.position}
             onChange={handle}
@@ -143,23 +107,32 @@ export default function SignupPage() {
             <option value="chef">Chef</option>
             <option value="staff">Staff</option>
           </select>
+          {/* Profile Image Upload */}
+          <div style={{ marginBottom: 15, marginTop: 15, textAlign: 'center' }}>
+            <label style={{ cursor: 'pointer', color: '#e75480', fontWeight: 'bold' }}>Upload Profile Image</label>
+            <input type="file" accept="image/*" onChange={handleFile} style={{ display: 'block', marginTop: 8, marginLeft: 'auto', marginRight: 'auto' }} />
+          </div>
+          {/* Submit Button */}
           <button
-            style={buttonStyle}
-            onMouseEnter={(e) => {
-              e.target.style.transform = 'scale(1.02)';
-              e.target.style.boxShadow = '0 6px 20px rgba(0,0,0,0.3)';
-            }}
-            onMouseLeave={(e) => {
-              e.target.style.transform = 'scale(1)';
-              e.target.style.boxShadow = '0 4px 15px rgba(0,0,0,0.2)';
+            style={{
+              width: '100%',
+              padding: '14px',
+              background: 'linear-gradient(135deg, #e546daff, #f63babff)',
+              color: '#fff',
+              fontSize: '1.1rem',
+              border: 'none',
+              borderRadius: 10,
+              cursor: 'pointer',
+              boxShadow: '0 4px 15px rgba(63, 81, 181, 0.2)',
+              transition: 'all 0.3s',
             }}
             onClick={submit}
           >
             Sign Up
           </button>
-        </div>
-        <div style={{ marginTop: '1.5rem', textAlign: 'center', fontSize: '0.9rem' }}>
-          Already have an account? <Link to="/login" style={{ color: '#e546b5ff', textDecoration: 'underline' }}>Login here</Link>
+          <div style={{ marginTop: '1.5rem', textAlign: 'center', fontSize: '0.9rem' }}>
+            Already have an account? <Link to="/login" style={{ color: '#e546b5ff', textDecoration: 'underline' }}>Login here</Link>
+          </div>
         </div>
       </div>
     </div>
