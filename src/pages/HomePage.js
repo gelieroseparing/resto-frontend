@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import axios from 'axios';
 import { useAuth } from '../App';
 import { useNavigate } from 'react-router-dom';
-import { FaHome, FaShoppingCart, FaCog, FaPlus, FaShoppingBasket, FaStar, FaSearch, FaEyeSlash } from 'react-icons/fa';
+import { FaHome, FaShoppingCart, FaCog, FaPlus, FaShoppingBasket, FaStar, FaSearch, FaEyeSlash, FaUser, FaClock } from 'react-icons/fa';
 
 export default function HomePage() {
   const { token, user } = useAuth();
@@ -10,15 +10,15 @@ export default function HomePage() {
 
   const [items, setItems] = useState([]);
   const [soldOutCount, setSoldOutCount] = useState(0);
-  const [bestFood, setBestFood] = useState(null);
+  const [latestFood, setLatestFood] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [cart, setCart] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Create axios instance with auth header
+   // Create axios instance with baseURL
   const api = axios.create({
-    baseURL: 'http://localhost:5000/api',
-    headers: token ? { Authorization: `Bearer ${token}` } : {}
+    baseURL: process.env.REACT_APP_API_URL,
+    headers: token ? { Authorization: `Bearer ${token}` } : {} 
   });
 
   const categories = ['All', 'Drinks', 'Breakfast', 'Dessert', 'Lunch', 'Dinner', 'Snack'];
@@ -33,15 +33,14 @@ export default function HomePage() {
       const unavailableItems = allItems.filter(item => !item.isAvailable);
       setSoldOutCount(unavailableItems.length);
 
-      // Find the best rated available item
-      const availableItems = allItems.filter(item => item.isAvailable);
-      if (availableItems.length > 0) {
-        const best = availableItems.reduce((prev, current) => {
-          return (prev.rating || 0) > (current.rating || 0) ? prev : current;
-        });
-        setBestFood(best.rating ? best : availableItems[0]);
+      // Find the latest added item (most recent createdAt)
+      if (allItems.length > 0) {
+        const latest = allItems
+          .filter(item => item.isAvailable)
+          .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+        setLatestFood(latest);
       } else {
-        setBestFood(null);
+        setLatestFood(null);
       }
     } catch (err) {
       console.error('Failed to load items', err);
@@ -96,8 +95,8 @@ export default function HomePage() {
     const notification = document.createElement('div');
     notification.textContent = `Added ${item.name} to cart!`;
     notification.style.position = 'fixed';
-    notification.style.top = '20px'; // Fixed: removed colon
-    notification.style.right = '20px'; // Fixed: removed colon
+    notification.style.top = '20px';
+    notification.style.right = '20px';
     notification.style.backgroundColor = '#10b981';
     notification.style.color = 'white';
     notification.style.padding = '10px 20px';
@@ -139,6 +138,18 @@ export default function HomePage() {
     }
   };
 
+  // Format date to show how recent the item is
+  const getTimeAgo = (dateString) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInHours = Math.floor((now - date) / (1000 * 60 * 60));
+    
+    if (diffInHours < 1) return 'Just now';
+    if (diffInHours < 24) return `${diffInHours}h ago`;
+    if (diffInHours < 168) return `${Math.floor(diffInHours / 24)}d ago`;
+    return `${Math.floor(diffInHours / 168)}w ago`;
+  };
+
   return (
     <div style={{
       padding: '20px 16px 70px',
@@ -161,7 +172,7 @@ export default function HomePage() {
             color: '#fff', 
             fontWeight: '800', 
             margin: 0
-          }}>Restaurant POS</h1>
+          }}>Bits and Bites Resto</h1>
           <p style={{ 
             margin: 0, 
             color: '#e6dedeff', 
@@ -207,41 +218,81 @@ export default function HomePage() {
             )}
           </div>
           
-          {/* Profile Image */}
+          {/* Profile Image with User Info */}
           <div 
             style={{
-              width: '45px',
-              height: '45px',
-              borderRadius: '50%',
-              overflow: 'hidden',
-              cursor: 'pointer',
-              border: '3px solid #ff6b93',
-              backgroundColor: '#f0f0f0',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
-              position: 'relative'
+              gap: '10px',
+              cursor: 'pointer',
+              padding: '8px 12px',
+              backgroundColor: 'rgba(255, 255, 255, 0.1)',
+              borderRadius: '25px',
+              transition: 'all 0.3s ease'
             }}
             onClick={() => nav('/profile')}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+            }}
           >
-            <img 
-              src={getProfileImageUrl()} 
-              alt="Profile" 
-              style={{ 
-                width: '100%', 
-                height: '100%', 
-                objectFit: 'cover' 
+            <div 
+              style={{
+                width: '40px',
+                height: '40px',
+                borderRadius: '50%',
+                overflow: 'hidden',
+                border: '2px solid #ff6b93',
+                backgroundColor: '#f0f0f0',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                position: 'relative'
               }}
-              onError={handleImageError}
-            />
-            <span style={{ 
-              display: 'none', 
-              color: '#333', 
-              fontWeight: 'bold', 
-              fontSize: '18px'
-            }}>
-              {user?.username?.charAt(0)?.toUpperCase() || 'U'}
-            </span>
+            >
+              <img 
+                src={getProfileImageUrl()} 
+                alt="Profile" 
+                style={{ 
+                  width: '100%', 
+                  height: '100%', 
+                  objectFit: 'cover' 
+                }}
+                onError={handleImageError}
+              />
+              <span style={{ 
+                display: 'none', 
+                color: '#333', 
+                fontWeight: 'bold', 
+                fontSize: '16px'
+              }}>
+                {user?.username?.charAt(0)?.toUpperCase() || 'U'}
+              </span>
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+              <span style={{ 
+                fontSize: '14px', 
+                fontWeight: '600', 
+                color: '#fff',
+                lineHeight: '1.2'
+              }}>
+                {user?.username || 'User'}
+              </span>
+              <span style={{ 
+                fontSize: '12px', 
+                color: '#ff6b93', 
+                fontWeight: '500',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}>
+                <FaUser size={10} />
+                {user?.position || 'Staff'}
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -323,27 +374,40 @@ export default function HomePage() {
           <p style={{ fontSize: '26px', fontWeight: '800', margin: 0, color: '#dc3545' }}>{soldOutCount}</p>
         </div>
         
-        {/* Best Food */}
-        {bestFood && (
+        {/* Latest Food */}
+        {latestFood && (
           <div style={{
             background: 'rgba(255,255,255,0.9)',
             padding: '15px',
             borderRadius: '18px',
             minWidth: '140px',
             textAlign: 'center',
-            flexShrink: 0
+            flexShrink: 0,
+            cursor: 'pointer'
+          }}
+          onClick={() => {
+            if (latestFood.isAvailable) {
+              nav('/order', { state: { preselect: latestFood } });
+            }
           }}>
-            <h3 style={{ margin: '0 0 8px', fontSize: '14px', color: '#333' }}>Featured</h3>
-            {bestFood.rating && (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                <FaStar color="#ffc107" />
-                <p style={{ fontSize: '18px', fontWeight: '800', margin: 0, color: '#333' }}>
-                  {bestFood.rating.toFixed(1)}
-                </p>
-              </div>
-            )}
-            <p style={{ fontSize: '12px', margin: '5px 0 0', color: '#666', fontWeight: '600', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {bestFood.name}
+            <h3 style={{ margin: '0 0 8px', fontSize: '14px', color: '#333', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+              <FaClock size={12} /> Latest
+            </h3>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginBottom: '4px' }}>
+              {latestFood.rating > 0 && (
+                <>
+                  <FaStar color="#ffc107" size={12} />
+                  <span style={{ fontSize: '14px', fontWeight: '600', color: '#333' }}>
+                    {latestFood.rating.toFixed(1)}
+                  </span>
+                </>
+              )}
+            </div>
+            <p style={{ fontSize: '12px', margin: '0', color: '#666', fontWeight: '600', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {latestFood.name}
+            </p>
+            <p style={{ fontSize: '10px', margin: '4px 0 0', color: '#999' }}>
+              {getTimeAgo(latestFood.createdAt)}
             </p>
           </div>
         )}
@@ -440,6 +504,46 @@ export default function HomePage() {
                 </div>
               )}
               
+              {/* Rating Badge */}
+              {it.rating > 0 && (
+                <div style={{
+                  position: 'absolute',
+                  top: '8px',
+                  right: '8px',
+                  backgroundColor: 'rgba(255, 193, 7, 0.9)',
+                  color: '#000',
+                  padding: '3px 6px',
+                  borderRadius: '8px',
+                  fontSize: '9px',
+                  fontWeight: 'bold',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '2px'
+                }}>
+                  ⭐ {it.rating.toFixed(1)}
+                </div>
+              )}
+
+              {/* New Item Badge */}
+              {it.createdAt && (new Date() - new Date(it.createdAt)) < (24 * 60 * 60 * 1000) && (
+                <div style={{
+                  position: 'absolute',
+                  bottom: '10px',
+                  left: '8px',
+                  backgroundColor: 'rgba(34, 197, 94, 0.9)',
+                  color: '#fff',
+                  padding: '2px 6px',
+                  borderRadius: '6px',
+                  fontSize: '8px',
+                  fontWeight: 'bold',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '2px'
+                }}>
+                  <FaClock size={8} /> NEW
+                </div>
+              )}
+              
               {/* Add to Cart Button */}
               <button
                 onClick={(e) => addToCart(it, e)}
@@ -495,7 +599,7 @@ export default function HomePage() {
                   color: !it.isAvailable ? '#bbb' : '#333',
                   fontSize: '15px'
                 }}>₱{parseFloat(it.price).toFixed(2)}</p>
-                {it.rating && (
+                {it.rating > 0 && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '2px', fontSize: '11px', color: '#ffc107' }}>
                     <FaStar size={10} />
                     <span>{it.rating.toFixed(1)}</span>
