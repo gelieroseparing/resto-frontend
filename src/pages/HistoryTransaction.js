@@ -1,22 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useAuth } from '../App';
-import { useNavigate } from 'react-router-dom'; // For navigation
+import { useNavigate } from 'react-router-dom';
 
 export default function HistoryTransaction() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [orders, setOrders] = useState([]);
-  const [selectedDate, setSelectedDate] = useState(null); // Track selected date
-  const [searchDate, setSearchDate] = useState(''); // For manual date search
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [searchDate, setSearchDate] = useState('');
   const navigate = useNavigate();
 
+  // Create axios instance with baseURL
   const api = axios.create({
-    baseURL: 'http://localhost:5000',
-    headers: token ? { Authorization: `Bearer ${token}` } : {}
+    baseURL: process.env.REACT_APP_API_URL,
+    headers: token ? { Authorization: `Bearer ${token}` } : {} 
   });
 
   useEffect(() => {
-    api.get('/api/orders')
+    api.get('/orders')
       .then(r => setOrders(r.data))
       .catch(e => console.error('Failed to fetch orders:', e));
   }, [api]);
@@ -52,8 +53,7 @@ export default function HistoryTransaction() {
         cursor: "pointer",
         fontSize: "24px"
       }} onClick={() => navigate('/settingpage')}>
-        {/* Unicode arrow or icon from a library */}
-        &#8592; {/* Left arrow */}
+        &#8592;
       </div>
 
       {/* Title and Search Bar */}
@@ -74,7 +74,7 @@ export default function HistoryTransaction() {
           value={searchDate}
           onChange={(e) => {
             setSearchDate(e.target.value);
-            setSelectedDate(null); // Reset selection when searching manually
+            setSelectedDate(null);
           }}
           style={{
             padding: "8px",
@@ -83,7 +83,6 @@ export default function HistoryTransaction() {
             width: "200px"
           }}
         />
-        {/* Optional: Clear search button */}
         {searchDate && (
           <button
             onClick={() => {
@@ -189,32 +188,49 @@ export default function HistoryTransaction() {
                 marginBottom: "10px",
               }}>
                 <div style={{ fontWeight: 600, color: "#111827" }}>
-                  Order #{o._id.slice(-6)} • {new Date(o.createdAt).toLocaleString()}
+                  Order #{o._id?.slice(-6) || 'N/A'} • {new Date(o.createdAt).toLocaleString()}
                 </div>
               </div>
               {/* Order Details */}
               <div style={{ marginBottom: "12px", color: "#050507ff", fontSize: "14px" }}>
-                Type: {o.orderType} &nbsp;•&nbsp; By: {o.createdBy}
+                Type: {o.orderType} &nbsp;•&nbsp; By: {o.createdBy || user?.username || 'Unknown'}
               </div>
               {/* Items */}
               <ul style={{ margin: 0, paddingLeft: "20px", marginBottom: "12px" }}>
                 {o.items && o.items.length > 0 ? (
                   o.items.map((it, i) => (
                     <li key={i} style={{ marginBottom: "6px", fontSize: "14px", color: "#07080aff" }}>
-                      {it.name} × {it.quantity} — ₱{(it.price * it.quantity).toFixed(2)}
+                      {it.name} × {it.quantity} — ₱{((it.price || 0) * (it.quantity || 0)).toFixed(2)}
                     </li>
                   ))
                 ) : (
                   <li>No items</li>
                 )}
               </ul>
+              
+              {/* Additional Payments */}
+              {o.additionalPayments && o.additionalPayments.length > 0 && (
+                <div style={{ marginBottom: "12px" }}>
+                  <div style={{ fontSize: "14px", fontWeight: "bold", color: "#07080aff", marginBottom: "6px" }}>
+                    Additional Payments:
+                  </div>
+                  <ul style={{ margin: 0, paddingLeft: "20px" }}>
+                    {o.additionalPayments.map((payment, i) => (
+                      <li key={i} style={{ marginBottom: "4px", fontSize: "14px", color: "#07080aff" }}>
+                        {payment.description} — ₱{(payment.amount || 0).toFixed(2)}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              
               {/* Total */}
               <div style={{
                 textAlign: "right",
                 fontSize: "16px",
                 fontWeight: 600,
                 color: "#111827",
-              }}>Total: ₱{o.totalAmount.toFixed(2)}</div>
+              }}>Total: ₱{(o.totalAmount || 0).toFixed(2)}</div>
             </div>
           ))}
         </div>

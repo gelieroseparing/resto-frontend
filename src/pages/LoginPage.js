@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../App';
 import { FaEye, FaEyeSlash, FaExclamationTriangle } from 'react-icons/fa';
-import api from '../services/api';   // ✅ use shared api
+import api from '../services/api';
 import backgroundImage from '../assets/images/Background.jpg';
 
 export default function LoginPage() {
@@ -25,21 +25,15 @@ export default function LoginPage() {
     }
 
     try {
-      console.log("🔍 Sending login request with:", { username, password }); // ✅ Debug log
-
-      const res = await api.post('/auth/login', {   // ✅ use api instance
+      const res = await api.post('/auth/login', {
         username,
         password
       });
 
-      console.log('✅ Login response:', res.data);
-
       if (res.data.token) {
-        // ✅ Save to Context
         setToken(res.data.token);
         setUser(res.data.user || { username });
 
-        // ✅ Also persist to localStorage
         localStorage.setItem("token", res.data.token);
         localStorage.setItem("user", JSON.stringify(res.data.user || { username }));
 
@@ -48,15 +42,13 @@ export default function LoginPage() {
         setErr('No token received from server');
       }
     } catch (error) {
-      console.error('❌ Login error:', error);
+      console.error('Login error:', error);
 
       if (error.response) {
         if (error.response.status === 401) {
           setErr('Invalid username or password');
-        } else if (error.response.data && error.response.data.error) {
-          setErr(error.response.data.error);
         } else {
-          setErr('Login failed. Please try again.');
+          setErr(error.response.data?.message || 'Login failed. Please try again.');
         }
       } else if (error.request) {
         setErr('Network error. Please check if the server is running.');

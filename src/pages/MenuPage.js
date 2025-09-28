@@ -7,13 +7,13 @@ import { FaArrowLeft, FaEdit, FaTrash, FaEye, FaEyeSlash, FaPlus, FaTimes, FaChe
 export default function MenuPage() {
   const { token } = useAuth();
   const navigate = useNavigate();
-  
   const [form, setForm] = useState({ 
     name: '', 
     price: '', 
     category: 'Breakfast', 
     imageFile: null,
-    isAvailable: true
+    isAvailable: true,
+    description: ''
   });
   const [editing, setEditing] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -25,10 +25,10 @@ export default function MenuPage() {
   const [showForm, setShowForm] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Create axios instance with auth header
+  // Create axios instance with baseURL
   const api = axios.create({
-    baseURL: 'http://localhost:5000/api',
-    headers: token ? { Authorization: `Bearer ${token}` } : {}
+    baseURL: process.env.REACT_APP_API_URL,
+    headers: token ? { Authorization: `Bearer ${token}` } : {} 
   });
 
   const categories = ['All', 'Breakfast', 'Lunch', 'Dinner', 'Dessert', 'Drinks', 'Snack'];
@@ -63,7 +63,8 @@ export default function MenuPage() {
       formData.append('price', parseFloat(form.price));
       formData.append('category', form.category);
       formData.append('isAvailable', form.isAvailable.toString());
-
+      formData.append('description', form.description || '');
+      
       if (form.imageFile) {
         formData.append('image', form.imageFile);
       }
@@ -81,14 +82,21 @@ export default function MenuPage() {
       }
 
       // Reset form
-      setForm({ name: '', price: '', category: 'Breakfast', imageFile: null, isAvailable: true });
+      setForm({ 
+        name: '', 
+        price: '', 
+        category: 'Breakfast', 
+        imageFile: null, 
+        isAvailable: true, 
+        description: '' 
+      });
       setPreview(null);
       setEditing(null);
       setShowForm(false);
-      await loadItems(); // Reload items
+      await loadItems();
     } catch (err) {
       console.error('Submit error:', err);
-      setError(err.response?.data?.error || 'Operation failed. Please try again.');
+      setError(err.response?.data?.message || 'Operation failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -109,9 +117,11 @@ export default function MenuPage() {
       price: item.price,
       category: item.category,
       imageFile: null,
-      isAvailable: item.isAvailable
+      isAvailable: item.isAvailable,
+      description: item.description || ''
     });
-    setPreview(item.imageUrl ? `http://localhost:5000${item.imageUrl}` : null);
+    // Fixed: Use environment variable for image URL
+    setPreview(item.imageUrl ? `${process.env.REACT_APP_API_URL}${item.imageUrl}` : null);
     setShowForm(true);
     setError('');
   };
@@ -125,16 +135,13 @@ export default function MenuPage() {
       await loadItems();
     } catch (err) {
       console.error('Delete error:', err);
-      setError('Failed to delete item');
+      setError(err.response?.data?.message || 'Failed to delete item');
     }
   };
 
   const toggleAvailability = async (item) => {
     try {
       const formData = new FormData();
-      formData.append('name', item.name);
-      formData.append('price', item.price);
-      formData.append('category', item.category);
       formData.append('isAvailable', (!item.isAvailable).toString());
       
       await api.put(`/items/${item._id}`, formData);
@@ -142,7 +149,7 @@ export default function MenuPage() {
       await loadItems();
     } catch (err) {
       console.error('Toggle availability error:', err);
-      setError('Failed to update availability');
+      setError(err.response?.data?.message || 'Failed to update availability');
     }
   };
 
@@ -152,50 +159,90 @@ export default function MenuPage() {
 
   const searchedItems = filteredItems.filter(item =>
     item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    item.category.toLowerCase().includes(searchQuery.toLowerCase())
+    item.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (item.description && item.description.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
+  const inputStyle = {
+    padding: '12px',
+    borderRadius: '8px',
+    border: '1px solid #d1d5db',
+    fontSize: '14px',
+    outline: 'none',
+    transition: 'all 0.3s ease',
+    width: '100%',
+    boxSizing: 'border-box'
+  };
+
+  const buttonStyle = {
+    padding: '12px 20px',
+    background: 'linear-gradient(90deg, #0b0b0eff, #0a0a13ff)',
+    color: '#ff6b93',
+    fontWeight: 'bold',
+    border: 'none',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    transition: 'all 0.3s ease',
+    boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px'
+  };
+
   const resetForm = () => {
-    setForm({ name: '', price: '', category: 'Breakfast', imageFile: null, isAvailable: true });
+    setForm({ 
+      name: '', 
+      price: '', 
+      category: 'Breakfast', 
+      imageFile: null, 
+      isAvailable: true, 
+      description: '' 
+    });
     setPreview(null);
     setEditing(null);
     setShowForm(false);
     setError('');
   };
 
+  // Function to get image URL - Fixed
+  const getImageUrl = (imageUrl) => {
+    if (!imageUrl) return null;
+    
+    // If it's already a full URL, return as is
+    if (imageUrl.startsWith('http')) {
+      return imageUrl;
+    }
+    
+    // If it starts with /uploads, use the environment variable
+    if (imageUrl.startsWith('/uploads')) {
+      return `${process.env.REACT_APP_API_URL}${imageUrl}`;
+    }
+    
+    // For any other case, prepend the base URL
+    return `${process.env.REACT_APP_API_URL}/${imageUrl}`;
+  };
+
   return (
-    <div style={{ padding: 20, background: '#790707ff', minHeight: '100vh' }}>
+    <div style={{ padding: 20, position: 'relative', background: '#790707ff', minHeight: '100vh' }}>
       
-      {/* Topbar */}
+      {/* Topbar with back icon and text */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 30 }}>
         <div style={{ display: 'flex', alignItems: 'center' }}>
           <FaArrowLeft 
-            style={{ marginRight: 12, color: '#fff', cursor: 'pointer', fontSize: '20px' }} 
+            style={{ marginRight: 12, color: '#ededf5ff', cursor: 'pointer', fontSize: '20px' }} 
             onClick={() => navigate(-1)} 
           />
-          <h2 style={{ margin: 0, color: '#fff', fontWeight: '700', fontSize: '24px' }}>Menu Management</h2>
+          <h2 style={{ margin: 0, color: '#ededf5ff', fontWeight: '700', fontSize: '24px' }}>Menu Management</h2>
         </div>
         <button 
-          style={{ 
-            padding: '12px 20px', 
-            background: '#007bff', 
-            color: 'white', 
-            border: 'none', 
-            borderRadius: '8px', 
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            fontWeight: '600',
-            fontSize: '14px'
-          }} 
+          style={buttonStyle} 
           onClick={() => setShowForm(!showForm)}
         >
           <FaPlus /> {showForm ? 'Close Form' : 'Add New Item'}
         </button>
       </div>
 
-      {/* Messages */}
+      {/* Success Message */}
       {success && (
         <div style={{ 
           padding: '12px 16px', 
@@ -211,6 +258,7 @@ export default function MenuPage() {
         </div>
       )}
 
+      {/* Error Message */}
       {error && (
         <div style={{ 
           padding: '12px 16px', 
@@ -227,7 +275,10 @@ export default function MenuPage() {
       )}
 
       {/* Search Bar */}
-      <div style={{ position: 'relative', marginBottom: '20px' }}>
+      <div style={{
+        position: 'relative',
+        marginBottom: '20px'
+      }}>
         <input
           type="text"
           placeholder="Search items by name or category..."
@@ -243,16 +294,18 @@ export default function MenuPage() {
             outline: 'none'
           }}
         />
-        <FaSearch style={{
-          position: 'absolute',
-          left: '15px',
-          top: '50%',
-          transform: 'translateY(-50%)',
-          color: '#666'
-        }} />
+        <FaSearch 
+          style={{
+            position: 'absolute',
+            left: '15px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            color: '#666'
+          }} 
+        />
       </div>
 
-      {/* Add Item Form */}
+      {/* Add Item Card - Collapsible */}
       {showForm && (
         <div style={{ 
           background: '#fff', 
@@ -269,14 +322,7 @@ export default function MenuPage() {
             <div>
               <label style={{ display: 'block', marginBottom: 8, fontWeight: '600', color: '#333' }}>Item Name *</label>
               <input
-                style={{ 
-                  padding: '12px', 
-                  borderRadius: '8px', 
-                  border: '1px solid #ddd', 
-                  width: '100%',
-                  fontSize: '14px',
-                  outline: 'none'
-                }}
+                style={inputStyle}
                 placeholder="Enter item name"
                 value={form.name}
                 onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
@@ -289,14 +335,7 @@ export default function MenuPage() {
                 <input
                   type="number"
                   step="0.01"
-                  style={{ 
-                    padding: '12px', 
-                    borderRadius: '8px', 
-                    border: '1px solid #ddd', 
-                    width: '100%',
-                    fontSize: '14px',
-                    outline: 'none'
-                  }}
+                  style={inputStyle}
                   placeholder="0.00"
                   value={form.price}
                   onChange={e => setForm(f => ({ ...f, price: e.target.value }))}
@@ -306,14 +345,7 @@ export default function MenuPage() {
               <div>
                 <label style={{ display: 'block', marginBottom: 8, fontWeight: '600', color: '#333' }}>Category</label>
                 <select
-                  style={{ 
-                    padding: '12px', 
-                    borderRadius: '8px', 
-                    border: '1px solid #ddd', 
-                    width: '100%',
-                    fontSize: '14px',
-                    outline: 'none'
-                  }}
+                  style={inputStyle}
                   value={form.category}
                   onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
                 >
@@ -322,6 +354,16 @@ export default function MenuPage() {
                   ))}
                 </select>
               </div>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', marginBottom: 8, fontWeight: '600', color: '#333' }}>Description</label>
+              <textarea
+                style={{...inputStyle, minHeight: '80px', resize: 'vertical'}}
+                placeholder="Enter item description"
+                value={form.description}
+                onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+              />
             </div>
             
             <div>
@@ -355,13 +397,7 @@ export default function MenuPage() {
               <input
                 type="file"
                 accept="image/*"
-                style={{ 
-                  padding: '12px', 
-                  borderRadius: '8px', 
-                  border: '1px solid #ddd', 
-                  width: '100%',
-                  fontSize: '14px'
-                }}
+                style={inputStyle}
                 onChange={handleFileChange}
               />
             </div>
@@ -388,14 +424,9 @@ export default function MenuPage() {
           <div style={{ display: 'flex', gap: 12 }}>
             <button 
               style={{ 
-                padding: '12px 20px', 
-                background: loading ? '#6c757d' : '#28a745', 
-                color: 'white', 
-                border: 'none', 
-                borderRadius: '8px', 
-                cursor: loading ? 'not-allowed' : 'pointer',
-                fontWeight: '600',
-                fontSize: '14px'
+                ...buttonStyle, 
+                opacity: loading ? 0.7 : 1,
+                background: loading ? '#6c757d' : 'linear-gradient(90deg, #0b0b0eff, #0a0a13ff)'
               }} 
               onClick={submit} 
               disabled={loading}
@@ -466,7 +497,7 @@ export default function MenuPage() {
         </h3>
 
         {searchedItems.length === 0 ? (
-                   <div style={{ 
+          <div style={{ 
             textAlign: 'center', 
             background: '#fff', 
             padding: '40px 20px', 
@@ -477,24 +508,6 @@ export default function MenuPage() {
             <p style={{ fontSize: '14px' }}>
               {searchQuery ? 'Try a different search term' : `No ${activeCategory === 'All' ? '' : activeCategory + ' '}items available`}
             </p>
-            {items.length === 0 && (
-              <button 
-                style={{ 
-                  marginTop: '16px',
-                  padding: '10px 20px', 
-                  background: '#007bff', 
-                  color: 'white', 
-                  border: 'none', 
-                  borderRadius: '8px', 
-                  cursor: 'pointer',
-                  fontWeight: '600'
-                }}
-                onClick={() => setShowForm(true)}
-              >
-                <FaPlus style={{ marginRight: '8px' }} />
-                Add Your First Item
-              </button>
-            )}
           </div>
         ) : (
           <div style={{
@@ -524,7 +537,7 @@ export default function MenuPage() {
                 }}>
                   {item.imageUrl ? (
                     <img 
-                      src={`http://localhost:5000${item.imageUrl}`} 
+                      src={getImageUrl(item.imageUrl)} 
                       alt={item.name} 
                       style={{ 
                         width: '100%', 
@@ -693,78 +706,6 @@ export default function MenuPage() {
           </div>
         )}
       </div>
-
-      {/* Statistics Summary */}
-      <div style={{ 
-        marginTop: '30px', 
-        background: '#fff', 
-        padding: '20px', 
-        borderRadius: '12px',
-        boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-      }}>
-        <h3 style={{ marginBottom: '16px', color: '#333' }}>Menu Statistics</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '15px' }}>
-          <div style={{ textAlign: 'center', padding: '15px', background: '#f8f9fa', borderRadius: '8px' }}>
-            <div style={{ fontSize: '24px', fontWeight: '800', color: '#007bff' }}>{items.length}</div>
-            <div style={{ fontSize: '14px', color: '#666' }}>Total Items</div>
-          </div>
-          <div style={{ textAlign: 'center', padding: '15px', background: '#f8f9fa', borderRadius: '8px' }}>
-            <div style={{ fontSize: '24px', fontWeight: '800', color: '#28a745' }}>
-              {items.filter(item => item.isAvailable).length}
-            </div>
-            <div style={{ fontSize: '14px', color: '#666' }}>Available</div>
-          </div>
-          <div style={{ textAlign: 'center', padding: '15px', background: '#f8f9fa', borderRadius: '8px' }}>
-            <div style={{ fontSize: '24px', fontWeight: '800', color: '#dc3545' }}>
-              {items.filter(item => !item.isAvailable).length}
-            </div>
-            <div style={{ fontSize: '14px', color: '#666' }}>Unavailable</div>
-          </div>
-          <div style={{ textAlign: 'center', padding: '15px', background: '#f8f9fa', borderRadius: '8px' }}>
-            <div style={{ fontSize: '24px', fontWeight: '800', color: '#6f42c1' }}>
-              {new Set(items.map(item => item.category)).size}
-            </div>
-            <div style={{ fontSize: '14px', color: '#666' }}>Categories</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Empty state encouragement */}
-      {items.length === 0 && !showForm && (
-        <div style={{ 
-          textAlign: 'center', 
-          background: '#fff', 
-          padding: '40px 20px', 
-          borderRadius: '12px',
-          marginTop: '20px'
-        }}>
-          <div style={{ fontSize: '48px', color: '#007bff', marginBottom: '16px' }}>🍽️</div>
-          <h3 style={{ color: '#333', marginBottom: '8px' }}>Your menu is empty</h3>
-          <p style={{ color: '#666', marginBottom: '20px' }}>
-            Start by adding your first menu item to get your restaurant online!
-          </p>
-          <button 
-            style={{ 
-              padding: '12px 24px', 
-              background: '#007bff', 
-              color: 'white', 
-              border: 'none', 
-              borderRadius: '8px', 
-              cursor: 'pointer',
-              fontWeight: '600',
-              fontSize: '16px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              margin: '0 auto'
-            }}
-            onClick={() => setShowForm(true)}
-          >
-            <FaPlus />
-            Add Your First Item
-          </button>
-        </div>
-      )}
     </div>
   );
 }

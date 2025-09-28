@@ -41,7 +41,9 @@ export default function WelcomePage() {
             fontWeight: 700,
           }}
         >
-          Welcome to Our Restaurant
+          Welcome to Point On Sale & Inventory Management
+          <br />
+          <span style={{ fontSize: '1.8rem', opacity: 0.9 }}>Bits and Bites Resto</span>
         </h1>
         {/* Subtitle with softer color */}
         <p style={{ color: '#374151', fontSize: '1.1rem', marginBottom: '2rem' }}>
