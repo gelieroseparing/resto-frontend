@@ -118,19 +118,39 @@ export default function HomePage() {
     (item.category && item.category.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
-  // Get profile image URL
+  // Get profile image URL - FIXED
   const getProfileImageUrl = () => {
     if (user?.profileImage) {
+      // If it's already a full URL, return as is
       if (user.profileImage.startsWith('http')) {
         return user.profileImage;
       }
-      return `http://localhost:5000${user.profileImage}`;
+      // If it's a relative path, construct the full URL
+      // Remove any leading slashes to avoid double slashes in URL
+      const imagePath = user.profileImage.startsWith('/') ? user.profileImage.slice(1) : user.profileImage;
+      return `${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/${imagePath}`;
     }
-    return '/profile.jpg';
+    return '/profile.jpg'; // Fallback image
+  };
+
+  // Get food item image URL - NEW FUNCTION
+  const getItemImageUrl = (item) => {
+    if (item?.imageUrl) {
+      // If it's already a full URL, return as is
+      if (item.imageUrl.startsWith('http')) {
+        return item.imageUrl;
+      }
+      // If it's a relative path, construct the full URL
+      // Remove any leading slashes to avoid double slashes in URL
+      const imagePath = item.imageUrl.startsWith('/') ? item.imageUrl.slice(1) : item.imageUrl;
+      return `${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/${imagePath}`;
+    }
+    return null; // No image available
   };
 
   // Improved image error handling
-  const handleImageError = (e) => {
+  const handleImageError = (e, type = 'food') => {
+    console.log(`Image failed to load for ${type}:`, e.target.src);
     e.target.style.display = 'none';
     const fallback = e.target.nextSibling;
     if (fallback && fallback.style) {
@@ -218,7 +238,7 @@ export default function HomePage() {
             )}
           </div>
           
-          {/* Profile Image with User Info */}
+          {/* Profile Image with User Info - FIXED */}
           <div 
             style={{
               display: 'flex',
@@ -252,6 +272,7 @@ export default function HomePage() {
                 position: 'relative'
               }}
             >
+              {/* Profile Image */}
               <img 
                 src={getProfileImageUrl()} 
                 alt="Profile" 
@@ -260,16 +281,22 @@ export default function HomePage() {
                   height: '100%', 
                   objectFit: 'cover' 
                 }}
-                onError={handleImageError}
+                onError={(e) => handleImageError(e, 'profile')}
               />
-              <span style={{ 
+              {/* Fallback for profile image */}
+              <div style={{ 
                 display: 'none', 
-                color: '#333', 
-                fontWeight: 'bold', 
+                width: '100%',
+                height: '100%',
+                backgroundColor: '#ff6b93',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'white',
+                fontWeight: 'bold',
                 fontSize: '16px'
               }}>
                 {user?.username?.charAt(0)?.toUpperCase() || 'U'}
-              </span>
+              </div>
             </div>
             
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
@@ -413,202 +440,220 @@ export default function HomePage() {
         )}
       </div>
 
-      {/* Food Items Grid */}
+      {/* Food Items Grid - FIXED IMAGES */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
         gap: '16px',
         padding: '0 4px'
       }}>
-        {filteredItems.map(it => (
-          <div
-            key={it._id}
-            style={{
-              background: '#fff',
-              borderRadius: '18px',
-              overflow: 'hidden',
-              cursor: it.isAvailable ? 'pointer' : 'not-allowed',
-              position: 'relative',
-              opacity: it.isAvailable ? 1 : 0.7,
-              transition: 'transform 0.2s',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-            }}
-            onClick={() => {
-              if (it.isAvailable) {
-                nav('/order', { state: { preselect: it } });
-              }
-            }}
-            onMouseEnter={(e) => {
-              if (it.isAvailable) {
-                e.currentTarget.style.transform = 'translateY(-2px)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (it.isAvailable) {
-                e.currentTarget.style.transform = 'translateY(0)';
-              }
-            }}
-          >
-            <div style={{ 
-              position: 'relative',
-              height: '140px',
-              backgroundColor: '#f9f7fe'
-            }}>
-              {it.imageUrl ? (
-                <img 
-                  src={`http://localhost:5000${it.imageUrl}`} 
-                  alt={it.name} 
-                  style={{ 
-                    width: '100%', 
-                    height: '100%', 
-                    objectFit: 'cover',
-                    filter: !it.isAvailable ? 'grayscale(50%)' : 'none'
-                  }} 
-                  onError={(e) => {
-                    e.target.style.display = 'none';
-                    e.target.nextSibling.style.display = 'flex';
-                  }}
-                />
-              ) : (
-                <div style={{ 
-                  height: '100%', 
-                  width: '100%',
-                  backgroundColor: '#f0f0f0',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#bbb',
-                  fontSize: '12px'
-                }}>
-                  No Image
-                </div>
-              )}
-              
-              {/* Unavailable Indicator */}
-              {!it.isAvailable && (
-                <div style={{
-                  position: 'absolute',
-                  top: '8px',
-                  left: '8px',
-                  backgroundColor: 'rgba(107, 114, 128, 0.9)',
-                  color: '#fff',
-                  padding: '4px 8px',
-                  borderRadius: '8px',
-                  fontSize: '10px',
-                  fontWeight: 'bold',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px'
-                }}>
-                  <FaEyeSlash size={10} /> Unavailable
-                </div>
-              )}
-              
-              {/* Rating Badge */}
-              {it.rating > 0 && (
-                <div style={{
-                  position: 'absolute',
-                  top: '8px',
-                  right: '8px',
-                  backgroundColor: 'rgba(255, 193, 7, 0.9)',
-                  color: '#000',
-                  padding: '3px 6px',
-                  borderRadius: '8px',
-                  fontSize: '9px',
-                  fontWeight: 'bold',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '2px'
-                }}>
-                  ⭐ {it.rating.toFixed(1)}
-                </div>
-              )}
-
-              {/* New Item Badge */}
-              {it.createdAt && (new Date() - new Date(it.createdAt)) < (24 * 60 * 60 * 1000) && (
-                <div style={{
-                  position: 'absolute',
-                  bottom: '10px',
-                  left: '8px',
-                  backgroundColor: 'rgba(34, 197, 94, 0.9)',
-                  color: '#fff',
-                  padding: '2px 6px',
-                  borderRadius: '6px',
-                  fontSize: '8px',
-                  fontWeight: 'bold',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '2px'
-                }}>
-                  <FaClock size={8} /> NEW
-                </div>
-              )}
-              
-              {/* Add to Cart Button */}
-              <button
-                onClick={(e) => addToCart(it, e)}
-                disabled={!it.isAvailable}
-                style={{
-                  position: 'absolute',
-                  bottom: '10px',
-                  right: '10px',
-                  backgroundColor: !it.isAvailable ? '#ccc' : '#007bff',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '50%',
-                  width: '32px',
-                  height: '32px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: !it.isAvailable ? 'not-allowed' : 'pointer',
-                  transition: 'transform 0.2s'
-                }}
-                onMouseEnter={(e) => {
-                  if (it.isAvailable) {
-                    e.currentTarget.style.transform = 'scale(1.1)';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = 'scale(1)';
-                }}
-              >
-                <FaPlus size={12} />
-              </button>
-            </div>
-            <div style={{ padding: '12px' }}>
-              <h4 style={{ 
-                margin: '0 0 4px', 
-                fontWeight: '700', 
-                fontSize: '14px',
-                color: !it.isAvailable ? '#999' : '#000',
-                whiteSpace: 'nowrap',
+        {filteredItems.map(it => {
+          const itemImageUrl = getItemImageUrl(it);
+          
+          return (
+            <div
+              key={it._id}
+              style={{
+                background: '#fff',
+                borderRadius: '18px',
                 overflow: 'hidden',
-                textOverflow: 'ellipsis'
-              }}>{it.name}</h4>
-              <p style={{ 
-                margin: '0 0 6px', 
-                fontSize: '11px', 
-                color: !it.isAvailable ? '#bbb' : '#666',
-                fontWeight: '600'
-              }}>{it.category}</p>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <p style={{ 
-                  margin: 0, 
-                  fontWeight: '800', 
-                  color: !it.isAvailable ? '#bbb' : '#333',
-                  fontSize: '15px'
-                }}>₱{parseFloat(it.price).toFixed(2)}</p>
-                {it.rating > 0 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '2px', fontSize: '11px', color: '#ffc107' }}>
-                    <FaStar size={10} />
-                    <span>{it.rating.toFixed(1)}</span>
+                cursor: it.isAvailable ? 'pointer' : 'not-allowed',
+                position: 'relative',
+                opacity: it.isAvailable ? 1 : 0.7,
+                transition: 'transform 0.2s',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+              }}
+              onClick={() => {
+                if (it.isAvailable) {
+                  nav('/order', { state: { preselect: it } });
+                }
+              }}
+              onMouseEnter={(e) => {
+                if (it.isAvailable) {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (it.isAvailable) {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                }
+              }}
+            >
+              <div style={{ 
+                position: 'relative',
+                height: '140px',
+                backgroundColor: '#f9f7fe'
+              }}>
+                {itemImageUrl ? (
+                  <>
+                    <img 
+                      src={itemImageUrl} 
+                      alt={it.name} 
+                      style={{ 
+                        width: '100%', 
+                        height: '100%', 
+                        objectFit: 'cover',
+                        filter: !it.isAvailable ? 'grayscale(50%)' : 'none'
+                      }} 
+                      onError={(e) => handleImageError(e, 'food')}
+                    />
+                    {/* Fallback for food image */}
+                    <div style={{ 
+                      display: 'none', 
+                      width: '100%', 
+                      height: '100%',
+                      backgroundColor: '#e0e0e0',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#999',
+                      fontSize: '12px',
+                      fontWeight: '600'
+                    }}>
+                      {it.name}
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ 
+                    height: '100%', 
+                    width: '100%',
+                    backgroundColor: '#f0f0f0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#bbb',
+                    fontSize: '12px',
+                    fontWeight: '600'
+                  }}>
+                    {it.name}
                   </div>
                 )}
+                
+                {/* Unavailable Indicator */}
+                {!it.isAvailable && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '8px',
+                    left: '8px',
+                    backgroundColor: 'rgba(107, 114, 128, 0.9)',
+                    color: '#fff',
+                    padding: '4px 8px',
+                    borderRadius: '8px',
+                    fontSize: '10px',
+                    fontWeight: 'bold',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}>
+                    <FaEyeSlash size={10} /> Unavailable
+                  </div>
+                )}
+                
+                {/* Rating Badge */}
+                {it.rating > 0 && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '8px',
+                    right: '8px',
+                    backgroundColor: 'rgba(255, 193, 7, 0.9)',
+                    color: '#000',
+                    padding: '3px 6px',
+                    borderRadius: '8px',
+                    fontSize: '9px',
+                    fontWeight: 'bold',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '2px'
+                  }}>
+                    ⭐ {it.rating.toFixed(1)}
+                  </div>
+                )}
+
+                {/* New Item Badge */}
+                {it.createdAt && (new Date() - new Date(it.createdAt)) < (24 * 60 * 60 * 1000) && (
+                  <div style={{
+                    position: 'absolute',
+                    bottom: '10px',
+                    left: '8px',
+                    backgroundColor: 'rgba(34, 197, 94, 0.9)',
+                    color: '#fff',
+                    padding: '2px 6px',
+                    borderRadius: '6px',
+                    fontSize: '8px',
+                    fontWeight: 'bold',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '2px'
+                  }}>
+                    <FaClock size={8} /> NEW
+                  </div>
+                )}
+                
+                {/* Add to Cart Button */}
+                <button
+                  onClick={(e) => addToCart(it, e)}
+                  disabled={!it.isAvailable}
+                  style={{
+                    position: 'absolute',
+                    bottom: '10px',
+                    right: '10px',
+                    backgroundColor: !it.isAvailable ? '#ccc' : '#007bff',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '50%',
+                    width: '32px',
+                    height: '32px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: !it.isAvailable ? 'not-allowed' : 'pointer',
+                    transition: 'transform 0.2s'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (it.isAvailable) {
+                      e.currentTarget.style.transform = 'scale(1.1)';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'scale(1)';
+                  }}
+                >
+                  <FaPlus size={12} />
+                </button>
+              </div>
+              <div style={{ padding: '12px' }}>
+                <h4 style={{ 
+                  margin: '0 0 4px', 
+                  fontWeight: '700', 
+                  fontSize: '14px',
+                  color: !it.isAvailable ? '#999' : '#000',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis'
+                }}>{it.name}</h4>
+                <p style={{ 
+                  margin: '0 0 6px', 
+                  fontSize: '11px', 
+                  color: !it.isAvailable ? '#bbb' : '#666',
+                  fontWeight: '600'
+                }}>{it.category}</p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <p style={{ 
+                    margin: 0, 
+                    fontWeight: '800', 
+                    color: !it.isAvailable ? '#bbb' : '#333',
+                    fontSize: '15px'
+                  }}>₱{parseFloat(it.price).toFixed(2)}</p>
+                  {it.rating > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '2px', fontSize: '11px', color: '#ffc107' }}>
+                      <FaStar size={10} />
+                      <span>{it.rating.toFixed(1)}</span>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {filteredItems.length === 0 && (
