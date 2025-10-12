@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { useAuth } from "../App";
 import { useNavigate } from "react-router-dom";
-import { FaEdit, FaLock, FaUserCircle, FaTimes, FaCheck, FaCamera, FaArrowLeft } from "react-icons/fa";
+import { FaEdit, FaLock, FaUserCircle, FaTimes, FaCheck, FaCamera, FaArrowLeft, FaHistory } from "react-icons/fa";
 
 export default function ProfilePage() {
   const { user, setUser, token } = useAuth();
@@ -126,6 +126,11 @@ export default function ProfilePage() {
     
     // Default profile image
     return "/profile.jpg";
+  };
+
+  // Navigate to End of Day History
+  const navigateToEndOfDayHistory = () => {
+    navigate('/history-transaction');
   };
 
   return (
@@ -466,6 +471,44 @@ export default function ProfilePage() {
                 {user.position}
               </span>
             </div>
+          </div>
+        )}
+
+        {/* End of Day History Button (Only for Managers) */}
+        {user?.role === 'manager' && (
+          <div style={{ marginBottom: 20 }}>
+            <button
+              onClick={navigateToEndOfDayHistory}
+              style={{
+                width: "100%",
+                padding: "16px",
+                background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                color: "#fff",
+                border: "none",
+                borderRadius: "16px",
+                fontSize: "16px",
+                fontWeight: 700,
+                cursor: "pointer",
+                boxShadow: "0 4px 10px rgba(102,126,234,0.3)",
+                transition: "all 0.2s ease",
+                fontFamily: "'Nunito', sans-serif",
+                letterSpacing: "0.5px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "8px"
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "translateY(-2px)";
+                e.currentTarget.style.boxShadow = "0 6px 15px rgba(102,126,234,0.4)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "translateY(0)";
+                e.currentTarget.style.boxShadow = "0 4px 10px rgba(102,126,234,0.3)";
+              }}
+            >
+              <FaHistory /> End of Day History
+            </button>
           </div>
         )}
 

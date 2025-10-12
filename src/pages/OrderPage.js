@@ -3,11 +3,11 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { useAuth } from '../App';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { FaTrash, FaPlus, FaMinus, FaHome, FaPrint, FaShoppingCart, FaCog, FaTimes, FaCheck, FaArrowLeft } from 'react-icons/fa';
+import { FaTrash, FaPlus, FaMinus, FaHome, FaPrint, FaShoppingCart, FaCog, FaTimes, FaCheck, FaArrowLeft, FaBox } from 'react-icons/fa';
 
 export default function OrderPage() {
   const { token, user } = useAuth();
-  const nav = useNavigate();
+  const navigate = useNavigate();
   const location = useLocation();
 
   // Set initial orderType to 'take-out' instead of default
@@ -77,14 +77,17 @@ export default function OrderPage() {
       if (found) {
         updated[index].price = found.price;
         updated[index].category = found.category;
+        updated[index].stock = found.stock || 0; // Add stock info
       } else {
         updated[index].price = 0;
+        updated[index].stock = 0;
       }
     }
 
     if (field === 'category') {
       updated[index].name = '';
       updated[index].price = 0;
+      updated[index].stock = 0;
     }
 
     setItems(updated);
@@ -109,7 +112,8 @@ export default function OrderPage() {
       category: item.category,
       name: item.name,
       quantity: item.quantity,
-      price: item.price
+      price: item.price,
+      stock: item.stock || 0
     }));
 
     setItems([...items.filter(item => item.name), ...cartItemsAsOrderItems]);
@@ -130,6 +134,16 @@ export default function OrderPage() {
     if (newQuantity < 1) return;
     
     const updatedCart = [...cartItems];
+    const item = updatedCart[index];
+    
+    // Check stock availability
+    const menuItem = menuItems.find(m => m.name === item.name);
+    if (menuItem && (menuItem.stock || 0) < newQuantity) {
+      setError(`Not enough stock for ${item.name}. Available: ${menuItem.stock || 0}`);
+      setTimeout(() => setError(''), 5000);
+      return;
+    }
+    
     updatedCart[index].quantity = newQuantity;
     setCartItems(updatedCart);
   };
@@ -153,12 +167,18 @@ export default function OrderPage() {
     setAdditionalPayments(updated);
   };
 
+  // Get available stock for an item
+  const getAvailableStock = (itemName) => {
+    const menuItem = menuItems.find(m => m.name === itemName);
+    return menuItem ? (menuItem.stock || 0) : 0;
+  };
+
   const itemsTotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const cartTotalAmount = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const additionalPaymentsTotal = additionalPayments.reduce((sum, payment) => sum + (parseFloat(payment.amount) || 0), 0);
   const totalAmount = itemsTotal + additionalPaymentsTotal;
 
-  // Place new order
+  // Place new order with stock deduction - UPDATED WITH STATUS
   const handlePlaceOrder = async () => {
     try {
       setIsLoading(true);
@@ -173,31 +193,66 @@ export default function OrderPage() {
         return;
       }
       
-      // Create order data with all necessary fields
+      // Check stock availability before placing order
+      for (const item of allItems) {
+        const menuItem = menuItems.find(m => m.name === item.name);
+        if (!menuItem) {
+          setError(`Item ${item.name} not found in menu.`);
+          setTimeout(() => setError(''), 5000);
+          setIsLoading(false);
+          return;
+        }
+        
+        if ((menuItem.stock || 0) < item.quantity) {
+          setError(`Not enough stock for ${item.name}. Available: ${menuItem.stock || 0}, Requested: ${item.quantity}`);
+          setTimeout(() => setError(''), 5000);
+          setIsLoading(false);
+          return;
+        }
+      }
+      
+      // Create order data with all necessary fields - INCLUDING STATUS
       const orderData = {
         orderType,
         items: allItems,
         additionalPayments: additionalPayments.filter(p => p.description && p.amount > 0),
         totalAmount: totalAmount,
         subtotal: itemsTotal,
-        status: 'complete',
         paymentMethod: 'Cash',
-        createdBy: user?.username || 'Unknown'
+        createdBy: user?.username || 'Unknown',
+        status: 'complete' // ← CRITICAL: This ensures orders appear in POS Analytics
       };
+      
+      console.log('Placing order with data:', orderData); // Debug log
       
       const res = await api.post('/orders', orderData);
       setSuccess('Order placed successfully!');
       
+      // Deduct stock from inventory
+      for (const item of allItems) {
+        const menuItem = menuItems.find(m => m.name === item.name);
+        if (menuItem) {
+          const newStock = Math.max(0, (menuItem.stock || 0) - item.quantity);
+          await api.put(`/items/${menuItem._id}`, { stock: newStock });
+          
+          // Update local state to reflect stock changes
+          setMenuItems(prev => prev.map(m => 
+            m._id === menuItem._id ? { ...m, stock: newStock } : m
+          ));
+        }
+      }
+      
       // Save the complete order data for the receipt
       setLastOrder({
-        ...res.data,
+        ...res.data.order,
         items: orderData.items,
         additionalPayments: orderData.additionalPayments,
         totalAmount: orderData.totalAmount,
         subtotal: orderData.subtotal,
         paymentMethod: orderData.paymentMethod,
         createdBy: orderData.createdBy,
-        orderType: orderData.orderType
+        orderType: orderData.orderType,
+        status: orderData.status // Include status in receipt data
       });
       
       // Set order as placed to show print section
@@ -209,7 +264,7 @@ export default function OrderPage() {
       setAdditionalPayments([]);
     } catch (err) {
       console.error('Order error:', err.response?.data || err.message);
-      setError('Error placing order');
+      setError(err.response?.data?.message || 'Error placing order');
       setTimeout(() => setError(''), 5000);
     } finally {
       setIsLoading(false);
@@ -251,7 +306,7 @@ export default function OrderPage() {
             }
             .order-details {
               display: grid;
-              grid-template-columns: 1fr 1fr;
+              gridTemplateColumns: 1fr 1fr;
               gap: 10px;
               margin-bottom: 10px;
             }
@@ -275,6 +330,24 @@ export default function OrderPage() {
               font-style: italic;
               margin-top: 20px;
               color: #666;
+            }
+            .stock-info {
+              font-size: 10px;
+              color: #666;
+              margin-top: 2px;
+            }
+            .low-stock {
+              color: #dc3545;
+              font-weight: bold;
+            }
+            .status-badge {
+              background: #28a745;
+              color: white;
+              padding: 4px 8px;
+              border-radius: 12px;
+              font-size: 10px;
+              font-weight: bold;
+              margin-left: 8px;
             }
             @media print {
               body { 
@@ -345,7 +418,7 @@ export default function OrderPage() {
               justifyContent: 'center',
               color: 'white'
             }}
-            onClick={() => nav('/home')}
+            onClick={() => navigate('/home')}
           >
             <FaHome />
           </button>
@@ -454,93 +527,106 @@ export default function OrderPage() {
                 <span>Total: ₱{formatAmount(cartTotalAmount)}</span>
               </h3>
               
-              {cartItems.map((item, index) => (
-                <div key={index} style={{ 
-                  display: 'flex', 
-                  justifyContent: 'space-between', 
-                  alignItems: 'center', 
-                  padding: '12px', 
-                  marginBottom: '8px', 
-                  backgroundColor: '#dbb5bfff',
-                  borderRadius: '12px',
-                  border: '1px solid #790707ff'
-                }}>
-                  <div style={{ flex: 2 }}>
-                    <div style={{ fontWeight: '600', color: '#170b11ff' }}>{item.name}</div>
-                    <div style={{ fontSize: '14px', color: '#1b0d11ff' }}>{item.category}</div>
-                  </div>
-                  
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <button
-                      onClick={() => updateCartQuantity(index, item.quantity - 1)}
-                      style={{ 
-                        padding: '6px', 
-                        borderRadius: '8px', 
-                        border: '1px solid #790707ff', 
-                        background: '#1b1515ff', 
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center'
-                      }}
-                    >
-                      <FaMinus size={15} color="#ff6b93" />
-                    </button>
-                    
-                    <span style={{ 
-                      minWidth: '30px', 
-                      textAlign: 'center', 
-                      fontWeight: '700',
-                      color: '#0c090aff'
-                    }}>
-                      {item.quantity}
-                    </span>
-                    
-                    <button
-                      onClick={() => updateCartQuantity(index, item.quantity + 1)}
-                      style={{ 
-                        padding: '6px', 
-                        borderRadius: '8px', 
-                        border: '1px solid #790707ff', 
-                        background: '#0b0909ff', 
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center'
-                      }}
-                    >
-                      <FaPlus size={15} color="#ff6b93" />
-                    </button>
-                  </div>
-                  
-                  <div style={{ 
-                    minWidth: '70px', 
-                    textAlign: 'right', 
-                    fontWeight: '600',
-                    color: '#1d1416ff'
+              {cartItems.map((item, index) => {
+                const availableStock = getAvailableStock(item.name);
+                const isLowStock = availableStock < item.quantity;
+                
+                return (
+                  <div key={index} style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center', 
+                    padding: '12px', 
+                    marginBottom: '8px', 
+                    backgroundColor: isLowStock ? '#d18fb3ff' : '#dbb5bfff',
+                    borderRadius: '12px',
+                    border: `1px solid ${isLowStock ? '#ff6b93' : '#790707ff'}`
                   }}>
-                    ₱{formatAmount(item.price * item.quantity)}
+                    <div style={{ flex: 2 }}>
+                      <div style={{ fontWeight: '600', color: '#170b11ff' }}>{item.name}</div>
+                      <div style={{ fontSize: '14px', color: '#1b0d11ff' }}>{item.category}</div>
+                      <div style={{ 
+                        fontSize: '12px', 
+                        color: isLowStock ? '#ff6b93' : '#ff6b93',
+                        fontWeight: isLowStock ? 'bold' : 'normal'
+                      }}>
+                        Stock: {availableStock} {isLowStock && `(Low Stock!)`}
+                      </div>
+                    </div>
+                    
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <button
+                        onClick={() => updateCartQuantity(index, item.quantity - 1)}
+                        style={{ 
+                          padding: '6px', 
+                          borderRadius: '8px', 
+                          border: '1px solid #790707ff', 
+                          background: '#1b1515ff', 
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                      >
+                        <FaMinus size={15} color="#ff6b93" />
+                      </button>
+                      
+                      <span style={{ 
+                        minWidth: '30px', 
+                        textAlign: 'center', 
+                        fontWeight: '700',
+                        color: '#0c090aff'
+                      }}>
+                        {item.quantity}
+                      </span>
+                      
+                      <button
+                        onClick={() => updateCartQuantity(index, item.quantity + 1)}
+                        style={{ 
+                          padding: '6px', 
+                          borderRadius: '8px', 
+                          border: '1px solid #790707ff', 
+                          background: '#0b0909ff', 
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                        disabled={availableStock <= item.quantity}
+                      >
+                        <FaPlus size={15} color={availableStock > item.quantity ? "#ff6b93" : "#ccc"} />
+                      </button>
+                    </div>
+                    
+                    <div style={{ 
+                      minWidth: '70px', 
+                      textAlign: 'right', 
+                      fontWeight: '600',
+                      color: '#1d1416ff'
+                    }}>
+                      ₱{formatAmount(item.price * item.quantity)}
+                    </div>
+                    
+                    <button
+                      onClick={() => removeFromCart(index)}
+                      style={{ 
+                        padding: '8px', 
+                        borderRadius: '8px', 
+                        border: 'none', 
+                        background: '#191515ff', 
+                        color: '#ff6b93', 
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
+                      title="Remove from cart"
+                    >
+                      <FaTrash size={15} />
+                    </button>
                   </div>
-                  
-                  <button
-                    onClick={() => removeFromCart(index)}
-                    style={{ 
-                      padding: '8px', 
-                      borderRadius: '8px', 
-                      border: 'none', 
-                      background: '#191515ff', 
-                      color: '#ff6b93', 
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}
-                    title="Remove from cart"
-                  >
-                    <FaTrash size={15} />
-                  </button>
-                </div>
-              ))}
+                );
+              })}
               
               <button
                 onClick={addCartToOrder}
@@ -609,8 +695,10 @@ export default function OrderPage() {
             {/* Items */}
             {items.map((item, index) => {
               const availableItems = item.category
-                ? menuItems.filter(m => m.category === item.category)
+                ? menuItems.filter(m => m.category === item.category && m.isAvailable)
                 : [];
+              const availableStock = getAvailableStock(item.name);
+              const isLowStock = availableStock < item.quantity;
 
               return (
                 <div key={index} style={{ 
@@ -618,7 +706,11 @@ export default function OrderPage() {
                   gap: 8, 
                   marginBottom: 12, 
                   alignItems: 'center',
-                  flexWrap: 'wrap'
+                  flexWrap: 'wrap',
+                  padding: '12px',
+                  backgroundColor: isLowStock ? '#dc9ac2ff' : 'transparent',
+                  borderRadius: '12px',
+                  border: isLowStock ? '1px solid #ff6b93' : 'none'
                 }}>
                   <select
                     value={item.category}
@@ -656,26 +748,38 @@ export default function OrderPage() {
                     <option value="">-- Select Item --</option>
                     {availableItems.map((m) => (
                       <option key={m._id} value={m.name}>
-                        {m.name} - ₱{m.price}
+                        {m.name} - ₱{m.price} (Stock: {m.stock || 0})
                       </option>
                     ))}
                   </select>
 
-                  <input
-                    type="number"
-                    min="1"
-                    value={item.quantity}
-                    onChange={(e) => handleItemChange(index, 'quantity', parseInt(e.target.value) || 1)}
-                    style={{ 
-                      width: 70, 
-                      padding: '10px', 
-                      borderRadius: 12, 
-                      border: '2px solid #754752ff', 
-                      textAlign: 'center',
-                      background: '#ddb7bfff',
-                      color: '#211b1eff'
-                    }}
-                  />
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <input
+                      type="number"
+                      min="1"
+                      value={item.quantity}
+                      onChange={(e) => handleItemChange(index, 'quantity', parseInt(e.target.value) || 1)}
+                      style={{ 
+                        width: 70, 
+                        padding: '10px', 
+                        borderRadius: 12, 
+                        border: `2px solid ${isLowStock ? '#0c0b0bff' : '#754752ff'}`, 
+                        textAlign: 'center',
+                        background: '#ddb7bfff',
+                        color: '#211b1eff'
+                      }}
+                    />
+                    {item.name && (
+                      <div style={{ 
+                        fontSize: '10px', 
+                        color: isLowStock ? '#0b0a0aff' : '#0d0c0cff',
+                        marginTop: '4px',
+                        fontWeight: isLowStock ? 'bold' : 'normal'
+                      }}>
+                        Stock: {availableStock}
+                      </div>
+                    )}
+                  </div>
 
                   <div style={{ 
                     minWidth: 90, 
@@ -693,8 +797,8 @@ export default function OrderPage() {
                         padding: '8px', 
                         borderRadius: '8px', 
                         border: 'none', 
-                        background: '#191515ff', 
-                        color: '#ff6b93', 
+                        background: '#bb8f8fff', 
+                        color: '#181616ff', 
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
@@ -786,7 +890,7 @@ export default function OrderPage() {
                       onClick={() => handleRemoveAdditionalPayment(index)}
                       style={{ 
                         padding: '10px', 
-                        borderRadius: 12, 
+                        borderRadius: '12', 
                         border: 'none', 
                         background: '#040303ff', 
                         color: '#ff6b93', 
@@ -857,20 +961,22 @@ export default function OrderPage() {
 
             <button
               onClick={handlePlaceOrder}
+              disabled={isLoading}
               style={{ 
-                background: '#0b0809ff', 
+                background: isLoading ? '#6c757d' : '#0b0809ff', 
                 color: '#ff6b93', 
                 padding: '12px 24px', 
                 border: 'none', 
                 borderRadius: 12, 
                 fontWeight: 'bold', 
-                cursor: 'pointer',
+                cursor: isLoading ? 'not-allowed' : 'pointer',
                 fontSize: '16px',
                 width: '100%',
-                boxShadow: '0 4px 8px rgba(255, 182, 193, 0.4)'
+                boxShadow: '0 4px 8px rgba(255, 182, 193, 0.4)',
+                opacity: isLoading ? 0.7 : 1
               }}
             >
-              Place Order
+              {isLoading ? 'Processing Order...' : 'Place Order'}
             </button>
           </div>
         </>
@@ -900,6 +1006,18 @@ export default function OrderPage() {
               </h2>
               <div style={{ fontSize: '14px', color: '#666', marginBottom: '5px' }}>
                 Bit and Bites
+              </div>
+              <div style={{ 
+                background: '#28a745', 
+                color: 'white', 
+                padding: '4px 12px', 
+                borderRadius: '15px', 
+                fontSize: '12px',
+                fontWeight: 'bold',
+                display: 'inline-block',
+                marginTop: '5px'
+              }}>
+                COMPLETED
               </div>
             </div>
 
@@ -967,6 +1085,20 @@ export default function OrderPage() {
                     {lastOrder.paymentMethod || 'Cash'}
                   </span>
                 </div>
+              </div>
+
+              {/* Status Display */}
+              <div style={{ 
+                marginTop: '10px',
+                padding: '8px',
+                background: '#d4edda',
+                borderRadius: '6px',
+                border: '1px solid #c3e6cb',
+                textAlign: 'center'
+              }}>
+                <strong style={{ color: '#155724', fontSize: '12px' }}>
+                  STATUS: {lastOrder.status?.toUpperCase() || 'COMPLETE'}
+                </strong>
               </div>
             </div>
 
@@ -1066,7 +1198,7 @@ export default function OrderPage() {
                 Thank you for your order!
               </p>
               <p style={{ margin: '5px 0 0 0', fontSize: '10px', color: '#999' }}>
-                Please come again!
+                This order will appear in POS Analytics
               </p>
             </div>
           </div>
@@ -1109,7 +1241,7 @@ export default function OrderPage() {
         boxShadow: '0 -2px 10px rgba(0,0,0,0.05)'
       }}>
         <button 
-          onClick={() => nav('/home')} 
+          onClick={() => navigate('/home')} 
           style={{ 
             background: 'none', 
             border: 'none', 
@@ -1124,7 +1256,7 @@ export default function OrderPage() {
           <span style={{ fontSize: '10px', color: '#374151' }}>Home</span>
         </button>
         <button 
-          onClick={() => nav('/order', { state: { cartItems: cartItems } })} 
+          onClick={() => navigate('/order', { state: { cartItems: cartItems } })} 
           style={{ 
             background: 'none', 
             border: 'none', 
@@ -1159,7 +1291,22 @@ export default function OrderPage() {
           )}
         </button>
         <button 
-          onClick={() => nav('/settingpage')} 
+          onClick={() => navigate('/add')} 
+          style={{ 
+            background: 'none', 
+            border: 'none', 
+            cursor: 'pointer',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '4px'
+          }}
+        >
+          <FaBox size={20} color="#374151" />
+          <span style={{ fontSize: '10px', color: '#374151' }}>Inventory</span>
+        </button>
+        <button 
+          onClick={() => navigate('/settingpage')} 
           style={{ 
             background: 'none', 
             border: 'none', 

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { FaArrowLeft, FaUser, FaPlus, FaHistory, FaInfoCircle, FaSignOutAlt, FaChevronRight } from "react-icons/fa";
+import { FaArrowLeft, FaUser, FaHistory, FaInfoCircle, FaSignOutAlt, FaChevronRight } from "react-icons/fa";
 
 function SettingsPage() {
   const nav = useNavigate();
@@ -17,7 +17,6 @@ function SettingsPage() {
 
   const menuItems = [
     { label: "Profile", path: "/profile", icon: <FaUser />, color: "#3b82f6" },
-    { label: "Add Item", path: "/add", icon: <FaPlus />, color: "#f59e0b" },
     { label: "History", path: "/history", icon: <FaHistory />, color: "#10b981" },
     { label: "About", path: "/about", icon: <FaInfoCircle />, color: "#8b5cf6" },
     { label: "Logout", onClick: handleLogout, icon: <FaSignOutAlt />, color: "#ef4444" },

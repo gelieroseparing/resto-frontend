@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import api from '../services/api';
-import backgroundImage from '../assets/images/Background.jpg';
+
 
 export default function SignupPage() {
   const nav = useNavigate();
-  const [form, setForm] = useState({ username: '', password: '', confirm: '', position: 'cashier' });
+  const [form, setForm] = useState({ username: '', password: '', confirm: '', position: '' });
   const [msg, setMsg] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -76,7 +76,7 @@ export default function SignupPage() {
 
   // Inline styles (same as your original)
   const containerStyle = {
-    backgroundImage: `url(${backgroundImage})`,
+    background: `#790707ff`,
     backgroundSize: 'cover',
     backgroundPosition: 'center',
     minHeight: '100vh',
@@ -183,7 +183,7 @@ export default function SignupPage() {
             disabled={loading}
           >
             <option value="cashier">Cashier</option>
-            <option value="chief">Chief</option>
+            <option value="chef">Chef</option>
             <option value="staff">Staff</option>
           </select>
           <button

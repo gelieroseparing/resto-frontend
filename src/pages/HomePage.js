@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import axios from 'axios';
 import { useAuth } from '../App';
 import { useNavigate } from 'react-router-dom';
-import { FaHome, FaShoppingCart, FaCog, FaPlus, FaShoppingBasket, FaStar, FaSearch, FaEyeSlash, FaUser, FaClock } from 'react-icons/fa';
+import { FaHome, FaShoppingCart, FaCog, FaPlus, FaShoppingBasket, FaStar, FaSearch, FaEyeSlash, FaUser, FaClock, FaBox, FaEye, FaFilter } from 'react-icons/fa';
 
 export default function HomePage() {
   const { token, user } = useAuth();
@@ -14,6 +14,7 @@ export default function HomePage() {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [cart, setCart] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [availabilityFilter, setAvailabilityFilter] = useState('all'); // 'all', 'available', 'unavailable'
 
    // Create axios instance with baseURL
   const api = axios.create({
@@ -55,6 +56,11 @@ export default function HomePage() {
     setSelectedCategory(category === 'All' ? null : category);
   };
 
+  // Handle availability filter
+  const handleAvailabilityFilter = (filter) => {
+    setAvailabilityFilter(filter);
+  };
+
   // Add item to cart
   const addToCart = (item, e) => {
     if (e) e.stopPropagation();
@@ -78,10 +84,50 @@ export default function HomePage() {
       }, 2000);
       return;
     }
+
+    // Check stock availability
+    if ((item.stock || 0) <= 0) {
+      const notification = document.createElement('div');
+      notification.textContent = `${item.name} is out of stock!`;
+      notification.style.position = 'fixed';
+      notification.style.top = '20px';
+      notification.style.right = '20px';
+      notification.style.backgroundColor = '#ef4444';
+      notification.style.color = 'white';
+      notification.style.padding = '10px 20px';
+      notification.style.borderRadius = '10px';
+      notification.style.zIndex = '1000';
+      document.body.appendChild(notification);
+      
+      setTimeout(() => {
+        document.body.removeChild(notification);
+      }, 2000);
+      return;
+    }
     
     const existingItem = cart.find(cartItem => cartItem._id === item._id);
     
     if (existingItem) {
+      // Check if adding more would exceed stock
+      if (existingItem.quantity + 1 > (item.stock || 0)) {
+        const notification = document.createElement('div');
+        notification.textContent = `Cannot add more ${item.name}. Only ${item.stock} available!`;
+        notification.style.position = 'fixed';
+        notification.style.top = '20px';
+        notification.style.right = '20px';
+        notification.style.backgroundColor = '#ef4444';
+        notification.style.color = 'white';
+        notification.style.padding = '10px 20px';
+        notification.style.borderRadius = '10px';
+        notification.style.zIndex = '1000';
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+          document.body.removeChild(notification);
+        }, 2000);
+        return;
+      }
+      
       setCart(cart.map(cartItem => 
         cartItem._id === item._id 
           ? { ...cartItem, quantity: cartItem.quantity + 1 } 
@@ -109,14 +155,18 @@ export default function HomePage() {
     }, 2000);
   };
 
-  // Filter items based on selected category and search query
+  // Filter items based on selected category, search query, and availability filter
   const filteredItems = (selectedCategory
     ? items.filter(it => it.category === selectedCategory)
     : items
   ).filter(item => 
     item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (item.category && item.category.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  ).filter(item => {
+    if (availabilityFilter === 'available') return item.isAvailable;
+    if (availabilityFilter === 'unavailable') return !item.isAvailable;
+    return true; // 'all' - show all items
+  });
 
   // Get profile image URL - FIXED
   const getProfileImageUrl = () => {
@@ -133,28 +183,67 @@ export default function HomePage() {
     return '/profile.jpg'; // Fallback image
   };
 
-  // Get food item image URL - NEW FUNCTION
+  // Get food item image URL - FIXED VERSION
   const getItemImageUrl = (item) => {
     if (item?.imageUrl) {
       // If it's already a full URL, return as is
       if (item.imageUrl.startsWith('http')) {
         return item.imageUrl;
       }
-      // If it's a relative path, construct the full URL
-      // Remove any leading slashes to avoid double slashes in URL
-      const imagePath = item.imageUrl.startsWith('/') ? item.imageUrl.slice(1) : item.imageUrl;
-      return `${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/${imagePath}`;
+      
+      // If it starts with /uploads, ensure proper URL construction
+      if (item.imageUrl.startsWith('/uploads/')) {
+        const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+        // Remove leading slash to avoid double slashes
+        const cleanPath = item.imageUrl.startsWith('/') ? item.imageUrl.slice(1) : item.imageUrl;
+        return `${baseUrl}/${cleanPath}`;
+      }
+      
+      // For any other relative path
+      const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+      const cleanPath = item.imageUrl.startsWith('/') ? item.imageUrl.slice(1) : item.imageUrl;
+      return `${baseUrl}/${cleanPath}`;
     }
     return null; // No image available
   };
 
-  // Improved image error handling
-  const handleImageError = (e, type = 'food') => {
+  // Improved image error handling with better debugging
+  const handleImageError = (e, type = 'food', itemName = '') => {
     console.log(`Image failed to load for ${type}:`, e.target.src);
+    console.log(`Item: ${itemName}`);
+    
+    // Hide the broken image
     e.target.style.display = 'none';
+    
+    // Show the fallback
     const fallback = e.target.nextSibling;
     if (fallback && fallback.style) {
       fallback.style.display = 'flex';
+    }
+    
+    // Try alternative URL construction if it's a food image
+    if (type === 'food' && itemName) {
+      const originalSrc = e.target.src;
+      console.log('Original src that failed:', originalSrc);
+      
+      // If the URL contains double slashes, try to fix it
+      if (originalSrc.includes('//uploads/')) {
+        const fixedSrc = originalSrc.replace('//uploads/', '/uploads/');
+        console.log('Trying fixed URL:', fixedSrc);
+        
+        // Create a new image to test the fixed URL
+        const testImg = new Image();
+        testImg.onload = () => {
+          console.log('Fixed URL works!');
+          e.target.src = fixedSrc;
+          e.target.style.display = 'block';
+          if (fallback) fallback.style.display = 'none';
+        };
+        testImg.onerror = () => {
+          console.log('Fixed URL also failed');
+        };
+        testImg.src = fixedSrc;
+      }
     }
   };
 
@@ -380,6 +469,69 @@ export default function HomePage() {
         ))}
       </div>
 
+      {/* Availability Filter Buttons */}
+      <div style={{ 
+        display: 'flex', 
+        gap: '8px', 
+        marginBottom: '20px',
+        justifyContent: 'center'
+      }}>
+        <button
+          onClick={() => handleAvailabilityFilter('all')}
+          style={{
+            padding: '8px 16px',
+            borderRadius: '20px',
+            border: 'none',
+            backgroundColor: availabilityFilter === 'all' ? '#007bff' : 'rgba(255,255,255,0.8)',
+            color: availabilityFilter === 'all' ? '#fff' : '#333',
+            cursor: 'pointer',
+            fontWeight: '600',
+            fontSize: '13px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px'
+          }}
+        >
+          <FaFilter size={12} /> All
+        </button>
+        <button
+          onClick={() => handleAvailabilityFilter('available')}
+          style={{
+            padding: '8px 16px',
+            borderRadius: '20px',
+            border: 'none',
+            backgroundColor: availabilityFilter === 'available' ? '#28a745' : 'rgba(255,255,255,0.8)',
+            color: availabilityFilter === 'available' ? '#fff' : '#333',
+            cursor: 'pointer',
+            fontWeight: '600',
+            fontSize: '13px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px'
+          }}
+        >
+          <FaEye size={12} /> Available
+        </button>
+        <button
+          onClick={() => handleAvailabilityFilter('unavailable')}
+          style={{
+            padding: '8px 16px',
+            borderRadius: '20px',
+            border: 'none',
+            backgroundColor: availabilityFilter === 'unavailable' ? '#dc3545' : 'rgba(255,255,255,0.8)',
+            color: availabilityFilter === 'unavailable' ? '#fff' : '#333',
+            cursor: 'pointer',
+            fontWeight: '600',
+            fontSize: '13px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px'
+          }}
+        >
+          <FaEyeSlash size={12} /> Unavailable
+        </button>
+      </div>
+
       {/* Summary Cards */}
       <div style={{
         display: 'flex',
@@ -399,6 +551,36 @@ export default function HomePage() {
         }}>
           <h3 style={{ margin: '0 0 8px', fontSize: '14px', color: '#333' }}>Unavailable</h3>
           <p style={{ fontSize: '26px', fontWeight: '800', margin: 0, color: '#dc3545' }}>{soldOutCount}</p>
+        </div>
+        
+        {/* Available Items */}
+        <div style={{
+          background: 'rgba(255,255,255,0.9)',
+          padding: '15px',
+          borderRadius: '18px',
+          minWidth: '140px',
+          textAlign: 'center',
+          flexShrink: 0
+        }}>
+          <h3 style={{ margin: '0 0 8px', fontSize: '14px', color: '#333' }}>Available</h3>
+          <p style={{ fontSize: '26px', fontWeight: '800', margin: 0, color: '#28a745' }}>
+            {items.filter(item => item.isAvailable).length}
+          </p>
+        </div>
+        
+        {/* Total Stock */}
+        <div style={{
+          background: 'rgba(255,255,255,0.9)',
+          padding: '15px',
+          borderRadius: '18px',
+          minWidth: '140px',
+          textAlign: 'center',
+          flexShrink: 0
+        }}>
+          <h3 style={{ margin: '0 0 8px', fontSize: '14px', color: '#333' }}>Total Stock</h3>
+          <p style={{ fontSize: '26px', fontWeight: '800', margin: 0, color: '#007bff' }}>
+            {items.reduce((total, item) => total + (item.stock || 0), 0)}
+          </p>
         </div>
         
         {/* Latest Food */}
@@ -449,6 +631,7 @@ export default function HomePage() {
       }}>
         {filteredItems.map(it => {
           const itemImageUrl = getItemImageUrl(it);
+          const isOutOfStock = (it.stock || 0) <= 0;
           
           return (
             <div
@@ -457,24 +640,24 @@ export default function HomePage() {
                 background: '#fff',
                 borderRadius: '18px',
                 overflow: 'hidden',
-                cursor: it.isAvailable ? 'pointer' : 'not-allowed',
+                cursor: it.isAvailable && !isOutOfStock ? 'pointer' : 'not-allowed',
                 position: 'relative',
-                opacity: it.isAvailable ? 1 : 0.7,
+                opacity: it.isAvailable && !isOutOfStock ? 1 : 0.7,
                 transition: 'transform 0.2s',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
               }}
               onClick={() => {
-                if (it.isAvailable) {
+                if (it.isAvailable && !isOutOfStock) {
                   nav('/order', { state: { preselect: it } });
                 }
               }}
               onMouseEnter={(e) => {
-                if (it.isAvailable) {
+                if (it.isAvailable && !isOutOfStock) {
                   e.currentTarget.style.transform = 'translateY(-2px)';
                 }
               }}
               onMouseLeave={(e) => {
-                if (it.isAvailable) {
+                if (it.isAvailable && !isOutOfStock) {
                   e.currentTarget.style.transform = 'translateY(0)';
                 }
               }}
@@ -493,9 +676,9 @@ export default function HomePage() {
                         width: '100%', 
                         height: '100%', 
                         objectFit: 'cover',
-                        filter: !it.isAvailable ? 'grayscale(50%)' : 'none'
+                        filter: !it.isAvailable || isOutOfStock ? 'grayscale(50%)' : 'none'
                       }} 
-                      onError={(e) => handleImageError(e, 'food')}
+                      onError={(e) => handleImageError(e, 'food', it.name)}
                     />
                     {/* Fallback for food image */}
                     <div style={{ 
@@ -548,6 +731,46 @@ export default function HomePage() {
                   </div>
                 )}
                 
+                {/* Out of Stock Indicator */}
+                {it.isAvailable && isOutOfStock && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '8px',
+                    left: '8px',
+                    backgroundColor: 'rgba(220, 53, 69, 0.9)',
+                    color: '#fff',
+                    padding: '4px 8px',
+                    borderRadius: '8px',
+                    fontSize: '10px',
+                    fontWeight: 'bold',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}>
+                    <FaBox size={10} /> Out of Stock
+                  </div>
+                )}
+                
+                {/* Stock Display */}
+                {it.isAvailable && !isOutOfStock && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '8px',
+                    left: '8px',
+                    backgroundColor: 'rgba(34, 197, 94, 0.9)',
+                    color: '#fff',
+                    padding: '4px 8px',
+                    borderRadius: '8px',
+                    fontSize: '10px',
+                    fontWeight: 'bold',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}>
+                    <FaBox size={10} /> {it.stock || 0}
+                  </div>
+                )}
+                
                 {/* Rating Badge */}
                 {it.rating > 0 && (
                   <div style={{
@@ -591,12 +814,12 @@ export default function HomePage() {
                 {/* Add to Cart Button */}
                 <button
                   onClick={(e) => addToCart(it, e)}
-                  disabled={!it.isAvailable}
+                  disabled={!it.isAvailable || isOutOfStock}
                   style={{
                     position: 'absolute',
                     bottom: '10px',
                     right: '10px',
-                    backgroundColor: !it.isAvailable ? '#ccc' : '#007bff',
+                    backgroundColor: (!it.isAvailable || isOutOfStock) ? '#ccc' : '#007bff',
                     color: '#fff',
                     border: 'none',
                     borderRadius: '50%',
@@ -605,11 +828,11 @@ export default function HomePage() {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    cursor: !it.isAvailable ? 'not-allowed' : 'pointer',
+                    cursor: (!it.isAvailable || isOutOfStock) ? 'not-allowed' : 'pointer',
                     transition: 'transform 0.2s'
                   }}
                   onMouseEnter={(e) => {
-                    if (it.isAvailable) {
+                    if (it.isAvailable && !isOutOfStock) {
                       e.currentTarget.style.transform = 'scale(1.1)';
                     }
                   }}
@@ -625,7 +848,7 @@ export default function HomePage() {
                   margin: '0 0 4px', 
                   fontWeight: '700', 
                   fontSize: '14px',
-                  color: !it.isAvailable ? '#999' : '#000',
+                  color: (!it.isAvailable || isOutOfStock) ? '#999' : '#000',
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis'
@@ -633,14 +856,14 @@ export default function HomePage() {
                 <p style={{ 
                   margin: '0 0 6px', 
                   fontSize: '11px', 
-                  color: !it.isAvailable ? '#bbb' : '#666',
+                  color: (!it.isAvailable || isOutOfStock) ? '#bbb' : '#666',
                   fontWeight: '600'
                 }}>{it.category}</p>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <p style={{ 
                     margin: 0, 
                     fontWeight: '800', 
-                    color: !it.isAvailable ? '#bbb' : '#333',
+                    color: (!it.isAvailable || isOutOfStock) ? '#bbb' : '#333',
                     fontSize: '15px'
                   }}>₱{parseFloat(it.price).toFixed(2)}</p>
                   {it.rating > 0 && (
@@ -659,7 +882,16 @@ export default function HomePage() {
       {filteredItems.length === 0 && (
         <div style={{ textAlign: 'center', padding: '40px 20px', color: '#fff' }}>
           <p style={{ fontSize: '18px', fontWeight: '600' }}>No items found</p>
-          <p style={{ fontSize: '14px' }}>Try a different search or category</p>
+          <p style={{ fontSize: '14px' }}>
+            {searchQuery 
+              ? 'Try a different search or filter' 
+              : availabilityFilter === 'available' 
+                ? 'No available items found' 
+                : availabilityFilter === 'unavailable' 
+                  ? 'No unavailable items found' 
+                  : 'No items available'
+            }
+          </p>
         </div>
       )}
 
@@ -725,6 +957,21 @@ export default function HomePage() {
               {cart.reduce((total, item) => total + item.quantity, 0)}
             </span>
           )}
+        </button>
+        <button 
+          onClick={() => nav('/add')} 
+          style={{ 
+            background: 'none', 
+            border: 'none', 
+            cursor: 'pointer',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '4px'
+          }}
+        >
+          <FaBox size={20} color="#374151" />
+          <span style={{ fontSize: '10px', color: '#374151' }}>Inventory</span>
         </button>
         <button 
           onClick={() => nav('/settingpage')} 

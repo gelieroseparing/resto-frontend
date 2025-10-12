@@ -1,7 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import backgroundImage from '../assets/images/Background.jpg';
 
 export default function WelcomePage() {
   const navigate = useNavigate();
@@ -13,7 +12,7 @@ export default function WelcomePage() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            backgroundImage: `url(${backgroundImage})`,
+            background: `#790707ff`,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
             backgroundRepeat: 'no-repeat',

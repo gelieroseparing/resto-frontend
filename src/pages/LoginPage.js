@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../App';
 import { FaEye, FaEyeSlash, FaExclamationTriangle } from 'react-icons/fa';
 import api from '../services/api';
-import backgroundImage from '../assets/images/Background.jpg';
+
 
 export default function LoginPage() {
   const nav = useNavigate();
@@ -51,7 +51,7 @@ export default function LoginPage() {
           setErr(error.response.data?.message || 'Login failed. Please try again.');
         }
       } else if (error.request) {
-        setErr('Network error. Please check if the server is running.');
+        setErr('Network error. Please try again!.');
       } else {
         setErr('An unexpected error occurred');
       }
@@ -72,7 +72,7 @@ export default function LoginPage() {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundImage: `url(${backgroundImage})`,
+      background: `#790707ff`,
       backgroundSize: 'cover',
       backgroundPosition: 'center',
       backgroundRepeat: 'no-repeat',
