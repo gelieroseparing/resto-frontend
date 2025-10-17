@@ -14,9 +14,10 @@ export default function HomePage() {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [cart, setCart] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [availabilityFilter, setAvailabilityFilter] = useState('all'); // 'all', 'available', 'unavailable'
+  const [availabilityFilter, setAvailabilityFilter] = useState('all');
+  const [imageCache, setImageCache] = useState(new Map()); // Local image cache
 
-   // Create axios instance with baseURL
+  // Create axios instance with baseURL
   const api = axios.create({
     baseURL: process.env.REACT_APP_API_URL,
     headers: token ? { Authorization: `Bearer ${token}` } : {} 
@@ -24,19 +25,88 @@ export default function HomePage() {
 
   const categories = ['All', 'Drinks', 'Breakfast', 'Dessert', 'Lunch', 'Dinner', 'Snack'];
 
+  // Improved function to get food item image URL
+  const getItemImageUrl = useCallback((item) => {
+    if (!item?.imageUrl) return null;
+
+    // If it's already a full URL, return as is
+    if (item.imageUrl.startsWith('http')) {
+      return item.imageUrl;
+    }
+
+    const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+    
+    // Handle different path formats that might come from the backend
+    let imagePath = item.imageUrl;
+
+    // Remove leading slash if present
+    if (imagePath.startsWith('/')) {
+      imagePath = imagePath.substring(1);
+    }
+
+    // Ensure the path starts with 'uploads/'
+    if (!imagePath.startsWith('uploads/')) {
+      imagePath = `uploads/${imagePath}`;
+    }
+
+    // Construct the full URL
+    const fullUrl = `${baseUrl}/${imagePath}`;
+    return fullUrl;
+  }, []);
+
+  // Preload and cache images
+  const preloadImages = useCallback(async (items) => {
+    const newCache = new Map(imageCache);
+    
+    for (const item of items) {
+      if (item.imageUrl && !newCache.has(item._id)) {
+        const imageUrl = getItemImageUrl(item);
+        if (imageUrl) {
+          try {
+            // Try to load the image
+            const img = new Image();
+            img.src = imageUrl;
+            
+            img.onload = () => {
+              console.log('Image loaded successfully:', imageUrl);
+              newCache.set(item._id, imageUrl);
+              setImageCache(new Map(newCache));
+            };
+            
+            img.onerror = () => {
+              console.log('Failed to load image:', imageUrl);
+              // Don't cache failed images
+            };
+          } catch (error) {
+            console.log('Error loading image:', error);
+          }
+        }
+      }
+    }
+  }, [getItemImageUrl, imageCache]);
+
   const loadData = useCallback(async () => {
     try {
       const res = await api.get('/items');
       const allItems = res.data;
-      setItems(allItems);
+      
+      // Sort items by creation date (newest first)
+      const sortedItems = allItems.sort((a, b) => 
+        new Date(b.createdAt) - new Date(a.createdAt)
+      );
+      
+      setItems(sortedItems);
+
+      // Preload images for all items
+      preloadImages(sortedItems);
 
       // Calculate unavailable items
-      const unavailableItems = allItems.filter(item => !item.isAvailable);
+      const unavailableItems = sortedItems.filter(item => !item.isAvailable);
       setSoldOutCount(unavailableItems.length);
 
       // Find the latest added item (most recent createdAt)
-      if (allItems.length > 0) {
-        const latest = allItems
+      if (sortedItems.length > 0) {
+        const latest = sortedItems
           .filter(item => item.isAvailable)
           .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
         setLatestFood(latest);
@@ -46,7 +116,7 @@ export default function HomePage() {
     } catch (err) {
       console.error('Failed to load items', err);
     }
-  }, [api]);
+  }, [api, preloadImages]);
 
   useEffect(() => { 
     loadData(); 
@@ -67,41 +137,13 @@ export default function HomePage() {
     
     // Check if item is available
     if (!item.isAvailable) {
-      const notification = document.createElement('div');
-      notification.textContent = `${item.name} is currently unavailable!`;
-      notification.style.position = 'fixed';
-      notification.style.top = '20px';
-      notification.style.right = '20px';
-      notification.style.backgroundColor = '#ef4444';
-      notification.style.color = 'white';
-      notification.style.padding = '10px 20px';
-      notification.style.borderRadius = '10px';
-      notification.style.zIndex = '1000';
-      document.body.appendChild(notification);
-      
-      setTimeout(() => {
-        document.body.removeChild(notification);
-      }, 2000);
+      showNotification(`${item.name} is currently unavailable!`, 'error');
       return;
     }
 
     // Check stock availability
     if ((item.stock || 0) <= 0) {
-      const notification = document.createElement('div');
-      notification.textContent = `${item.name} is out of stock!`;
-      notification.style.position = 'fixed';
-      notification.style.top = '20px';
-      notification.style.right = '20px';
-      notification.style.backgroundColor = '#ef4444';
-      notification.style.color = 'white';
-      notification.style.padding = '10px 20px';
-      notification.style.borderRadius = '10px';
-      notification.style.zIndex = '1000';
-      document.body.appendChild(notification);
-      
-      setTimeout(() => {
-        document.body.removeChild(notification);
-      }, 2000);
+      showNotification(`${item.name} is out of stock!`, 'error');
       return;
     }
     
@@ -110,21 +152,7 @@ export default function HomePage() {
     if (existingItem) {
       // Check if adding more would exceed stock
       if (existingItem.quantity + 1 > (item.stock || 0)) {
-        const notification = document.createElement('div');
-        notification.textContent = `Cannot add more ${item.name}. Only ${item.stock} available!`;
-        notification.style.position = 'fixed';
-        notification.style.top = '20px';
-        notification.style.right = '20px';
-        notification.style.backgroundColor = '#ef4444';
-        notification.style.color = 'white';
-        notification.style.padding = '10px 20px';
-        notification.style.borderRadius = '10px';
-        notification.style.zIndex = '1000';
-        document.body.appendChild(notification);
-        
-        setTimeout(() => {
-          document.body.removeChild(notification);
-        }, 2000);
+        showNotification(`Cannot add more ${item.name}. Only ${item.stock} available!`, 'error');
         return;
       }
       
@@ -137,21 +165,28 @@ export default function HomePage() {
       setCart([...cart, { ...item, quantity: 1 }]);
     }
     
-    // Show feedback that item was added
+    showNotification(`Added ${item.name} to cart!`, 'success');
+  };
+
+  // Show notification
+  const showNotification = (message, type = 'success') => {
     const notification = document.createElement('div');
-    notification.textContent = `Added ${item.name} to cart!`;
+    notification.textContent = message;
     notification.style.position = 'fixed';
     notification.style.top = '20px';
     notification.style.right = '20px';
-    notification.style.backgroundColor = '#10b981';
+    notification.style.backgroundColor = type === 'success' ? '#10b981' : '#ef4444';
     notification.style.color = 'white';
     notification.style.padding = '10px 20px';
     notification.style.borderRadius = '10px';
     notification.style.zIndex = '1000';
+    notification.style.fontWeight = '500';
     document.body.appendChild(notification);
     
     setTimeout(() => {
-      document.body.removeChild(notification);
+      if (document.body.contains(notification)) {
+        document.body.removeChild(notification);
+      }
     }, 2000);
   };
 
@@ -165,85 +200,90 @@ export default function HomePage() {
   ).filter(item => {
     if (availabilityFilter === 'available') return item.isAvailable;
     if (availabilityFilter === 'unavailable') return !item.isAvailable;
-    return true; // 'all' - show all items
+    return true;
   });
 
-  // Get profile image URL - FIXED
-  const getProfileImageUrl = () => {
+  // Get profile image URL
+  const getProfileImageUrl = useCallback(() => {
     if (user?.profileImage) {
-      // If it's already a full URL, return as is
       if (user.profileImage.startsWith('http')) {
         return user.profileImage;
       }
-      // If it's a relative path, construct the full URL
-      // Remove any leading slashes to avoid double slashes in URL
       const imagePath = user.profileImage.startsWith('/') ? user.profileImage.slice(1) : user.profileImage;
       return `${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/${imagePath}`;
     }
-    return '/profile.jpg'; // Fallback image
-  };
+    return '/profile.jpg';
+  }, [user?.profileImage]);
 
-  // Get food item image URL - FIXED VERSION
-  const getItemImageUrl = (item) => {
-    if (item?.imageUrl) {
-      // If it's already a full URL, return as is
-      if (item.imageUrl.startsWith('http')) {
-        return item.imageUrl;
-      }
-      
-      // If it starts with /uploads, ensure proper URL construction
-      if (item.imageUrl.startsWith('/uploads/')) {
-        const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-        // Remove leading slash to avoid double slashes
-        const cleanPath = item.imageUrl.startsWith('/') ? item.imageUrl.slice(1) : item.imageUrl;
-        return `${baseUrl}/${cleanPath}`;
-      }
-      
-      // For any other relative path
-      const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-      const cleanPath = item.imageUrl.startsWith('/') ? item.imageUrl.slice(1) : item.imageUrl;
-      return `${baseUrl}/${cleanPath}`;
-    }
-    return null; // No image available
-  };
-
-  // Improved image error handling with better debugging
-  const handleImageError = (e, type = 'food', itemName = '') => {
-    console.log(`Image failed to load for ${type}:`, e.target.src);
-    console.log(`Item: ${itemName}`);
+  // Improved image error handling with multiple fallbacks
+  const handleImageError = (e, item, type = 'food') => {
+    console.log(`Image error for ${type}:`, e.target.src);
     
     // Hide the broken image
     e.target.style.display = 'none';
     
-    // Show the fallback
+    // Show fallback
     const fallback = e.target.nextSibling;
     if (fallback && fallback.style) {
       fallback.style.display = 'flex';
     }
-    
-    // Try alternative URL construction if it's a food image
-    if (type === 'food' && itemName) {
-      const originalSrc = e.target.src;
-      console.log('Original src that failed:', originalSrc);
+
+    // Try to get from cache
+    const cachedUrl = imageCache.get(item._id);
+    if (cachedUrl && cachedUrl !== e.target.src) {
+      console.log('Trying cached URL:', cachedUrl);
+      e.target.src = cachedUrl;
+      e.target.style.display = 'block';
+      if (fallback) fallback.style.display = 'none';
+      return;
+    }
+
+    // Try alternative URL constructions
+    if (type === 'food' && item.imageUrl) {
+      const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+      const pathVariations = [
+        item.imageUrl,
+        item.imageUrl.startsWith('/') ? item.imageUrl.slice(1) : `/${item.imageUrl}`,
+        item.imageUrl.startsWith('uploads/') ? item.imageUrl : `uploads/${item.imageUrl}`,
+        item.imageUrl.startsWith('/uploads/') ? item.imageUrl.slice(1) : item.imageUrl
+      ];
+
+      let currentIndex = 0;
       
-      // If the URL contains double slashes, try to fix it
-      if (originalSrc.includes('//uploads/')) {
-        const fixedSrc = originalSrc.replace('//uploads/', '/uploads/');
-        console.log('Trying fixed URL:', fixedSrc);
+      const tryNextVariation = () => {
+        if (currentIndex >= pathVariations.length) return;
         
-        // Create a new image to test the fixed URL
-        const testImg = new Image();
-        testImg.onload = () => {
-          console.log('Fixed URL works!');
-          e.target.src = fixedSrc;
-          e.target.style.display = 'block';
-          if (fallback) fallback.style.display = 'none';
-        };
-        testImg.onerror = () => {
-          console.log('Fixed URL also failed');
-        };
-        testImg.src = fixedSrc;
-      }
+        const variation = pathVariations[currentIndex];
+        const testUrl = `${baseUrl}/${variation}`;
+        
+        if (testUrl !== e.target.src) {
+          console.log('Testing alternative URL:', testUrl);
+          
+          const testImg = new Image();
+          testImg.onload = () => {
+            console.log('Alternative URL works!');
+            e.target.src = testUrl;
+            e.target.style.display = 'block';
+            if (fallback) fallback.style.display = 'none';
+            
+            // Cache this working URL
+            const newCache = new Map(imageCache);
+            newCache.set(item._id, testUrl);
+            setImageCache(newCache);
+          };
+          testImg.onerror = () => {
+            console.log('Alternative URL failed:', testUrl);
+            currentIndex++;
+            tryNextVariation();
+          };
+          testImg.src = testUrl;
+        } else {
+          currentIndex++;
+          tryNextVariation();
+        }
+      };
+      
+      tryNextVariation();
     }
   };
 
@@ -327,7 +367,7 @@ export default function HomePage() {
             )}
           </div>
           
-          {/* Profile Image with User Info - FIXED */}
+          {/* Profile Image */}
           <div 
             style={{
               display: 'flex',
@@ -361,7 +401,6 @@ export default function HomePage() {
                 position: 'relative'
               }}
             >
-              {/* Profile Image */}
               <img 
                 src={getProfileImageUrl()} 
                 alt="Profile" 
@@ -370,9 +409,12 @@ export default function HomePage() {
                   height: '100%', 
                   objectFit: 'cover' 
                 }}
-                onError={(e) => handleImageError(e, 'profile')}
+                onError={(e) => {
+                  e.target.style.display = 'none';
+                  const fallback = e.target.nextSibling;
+                  if (fallback) fallback.style.display = 'flex';
+                }}
               />
-              {/* Fallback for profile image */}
               <div style={{ 
                 display: 'none', 
                 width: '100%',
@@ -622,7 +664,7 @@ export default function HomePage() {
         )}
       </div>
 
-      {/* Food Items Grid - FIXED IMAGES */}
+      {/* Food Items Grid */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
@@ -678,7 +720,8 @@ export default function HomePage() {
                         objectFit: 'cover',
                         filter: !it.isAvailable || isOutOfStock ? 'grayscale(50%)' : 'none'
                       }} 
-                      onError={(e) => handleImageError(e, 'food', it.name)}
+                      onError={(e) => handleImageError(e, it, 'food')}
+                      loading="lazy"
                     />
                     {/* Fallback for food image */}
                     <div style={{ 
@@ -690,7 +733,9 @@ export default function HomePage() {
                       justifyContent: 'center',
                       color: '#999',
                       fontSize: '12px',
-                      fontWeight: '600'
+                      fontWeight: '600',
+                      textAlign: 'center',
+                      padding: '10px'
                     }}>
                       {it.name}
                     </div>
@@ -705,7 +750,9 @@ export default function HomePage() {
                     justifyContent: 'center',
                     color: '#bbb',
                     fontSize: '12px',
-                    fontWeight: '600'
+                    fontWeight: '600',
+                    textAlign: 'center',
+                    padding: '10px'
                   }}>
                     {it.name}
                   </div>
@@ -943,11 +990,11 @@ export default function HomePage() {
               position: 'absolute',
               top: '-5px',
               right: '-5px',
-              backgroundColor: '#dc3545',
+              backgroundColor: '#ff6b6b',
               color: 'white',
               borderRadius: '50%',
-              width: '16px',
-              height: '16px',
+              width: '20px',
+              height: '20px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -970,6 +1017,7 @@ export default function HomePage() {
             gap: '4px'
           }}
         >
+        
           <FaBox size={20} color="#374151" />
           <span style={{ fontSize: '10px', color: '#374151' }}>Inventory</span>
         </button>

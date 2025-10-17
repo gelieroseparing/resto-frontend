@@ -10,13 +10,15 @@ export default function OrderPage() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Set initial orderType to 'take-out' instead of default
-  const [orderType, setOrderType] = useState('take-out');
+  // Set initial orderType to 'Take-out' (matching backend enum)
+  const [orderType, setOrderType] = useState('Take-out');
   const [items, setItems] = useState([{ category: '', name: '', quantity: 1, price: 0 }]);
   const [menuItems, setMenuItems] = useState([]);
   const [lastOrder, setLastOrder] = useState(null);
   const [cartItems, setCartItems] = useState([]);
   const [additionalPayments, setAdditionalPayments] = useState([]);
+  const [tenderedAmount, setTenderedAmount] = useState(''); // NEW: Tendered amount
+  const [changeAmount, setChangeAmount] = useState(0);      // NEW: Change amount
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isOrderPlaced, setIsOrderPlaced] = useState(false);
@@ -29,10 +31,25 @@ export default function OrderPage() {
     headers: token ? { Authorization: `Bearer ${token}` } : {} 
   });
   
-  // Load cart items from navigation state
+  // Calculate totals FIRST
+  const itemsTotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const cartTotalAmount = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const additionalPaymentsTotal = additionalPayments.reduce((sum, payment) => sum + (parseFloat(payment.amount) || 0), 0);
+  const totalAmount = itemsTotal + additionalPaymentsTotal;
+
+  // Load cart items from navigation state AND localStorage
   useEffect(() => {
+    // Load from navigation state
     if (location.state?.cartItems) {
       setCartItems(location.state.cartItems);
+      // Also save to localStorage for persistence
+      localStorage.setItem('cartItems', JSON.stringify(location.state.cartItems));
+    } else {
+      // Load from localStorage if no navigation state
+      const savedCartItems = localStorage.getItem('cartItems');
+      if (savedCartItems) {
+        setCartItems(JSON.parse(savedCartItems));
+      }
     }
     
     if (location.state?.preselect) {
@@ -61,6 +78,16 @@ export default function OrderPage() {
   useEffect(() => {
     loadMenuItems();
   }, [loadMenuItems]);
+
+  // Calculate change when tendered amount changes - MOVED AFTER totalAmount declaration
+  useEffect(() => {
+    if (tenderedAmount && !isNaN(parseFloat(tenderedAmount))) {
+      const change = parseFloat(tenderedAmount) - totalAmount;
+      setChangeAmount(change > 0 ? change : 0);
+    } else {
+      setChangeAmount(0);
+    }
+  }, [tenderedAmount, totalAmount]);
 
   // Add new item row
   const handleAddItem = () => {
@@ -118,6 +145,7 @@ export default function OrderPage() {
 
     setItems([...items.filter(item => item.name), ...cartItemsAsOrderItems]);
     setCartItems([]);
+    localStorage.removeItem('cartItems'); // Clear cart from localStorage
     setSuccess('Cart items added to order!');
     setTimeout(() => setSuccess(''), 5000);
   };
@@ -127,6 +155,7 @@ export default function OrderPage() {
     const updatedCart = [...cartItems];
     updatedCart.splice(index, 1);
     setCartItems(updatedCart);
+    localStorage.setItem('cartItems', JSON.stringify(updatedCart)); // Update localStorage
   };
 
   // Update cart item quantity
@@ -146,6 +175,7 @@ export default function OrderPage() {
     
     updatedCart[index].quantity = newQuantity;
     setCartItems(updatedCart);
+    localStorage.setItem('cartItems', JSON.stringify(updatedCart)); // Update localStorage
   };
 
   // Add additional payment (like tupperware)
@@ -173,12 +203,7 @@ export default function OrderPage() {
     return menuItem ? (menuItem.stock || 0) : 0;
   };
 
-  const itemsTotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const cartTotalAmount = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const additionalPaymentsTotal = additionalPayments.reduce((sum, payment) => sum + (parseFloat(payment.amount) || 0), 0);
-  const totalAmount = itemsTotal + additionalPaymentsTotal;
-
-  // Place new order with stock deduction - UPDATED WITH STATUS
+  // Place new order with stock deduction - UPDATED WITH TENDERED & CHANGE
   const handlePlaceOrder = async () => {
     try {
       setIsLoading(true);
@@ -188,6 +213,14 @@ export default function OrderPage() {
       
       if (allItems.length === 0) {
         setError('Please add at least one item.');
+        setTimeout(() => setError(''), 5000);
+        setIsLoading(false);
+        return;
+      }
+      
+      // Validate tendered amount
+      if (tenderedAmount && parseFloat(tenderedAmount) < totalAmount) {
+        setError(`Tendered amount (₱${parseFloat(tenderedAmount).toFixed(2)}) is less than total amount (₱${totalAmount.toFixed(2)})`);
         setTimeout(() => setError(''), 5000);
         setIsLoading(false);
         return;
@@ -211,14 +244,16 @@ export default function OrderPage() {
         }
       }
       
-      // Create order data with all necessary fields - INCLUDING STATUS
+      // Create order data with all necessary fields - INCLUDING TENDERED & CHANGE
       const orderData = {
-        orderType,
+        orderType, // Now uses 'Take-out', 'Dine-in', 'Delivery' (matching backend enum)
         items: allItems,
         additionalPayments: additionalPayments.filter(p => p.description && p.amount > 0),
         totalAmount: totalAmount,
         subtotal: itemsTotal,
         paymentMethod: 'Cash',
+        tenderedAmount: tenderedAmount ? parseFloat(tenderedAmount) : undefined, // NEW
+        changeAmount: changeAmount > 0 ? changeAmount : undefined,               // NEW
         createdBy: user?.username || 'Unknown',
         status: 'complete' // ← CRITICAL: This ensures orders appear in POS Analytics
       };
@@ -250,6 +285,8 @@ export default function OrderPage() {
         totalAmount: orderData.totalAmount,
         subtotal: orderData.subtotal,
         paymentMethod: orderData.paymentMethod,
+        tenderedAmount: orderData.tenderedAmount, // NEW
+        changeAmount: orderData.changeAmount,     // NEW
         createdBy: orderData.createdBy,
         orderType: orderData.orderType,
         status: orderData.status // Include status in receipt data
@@ -262,9 +299,15 @@ export default function OrderPage() {
       setItems([{ category: '', name: '', quantity: 1, price: 0 }]);
       setCartItems([]);
       setAdditionalPayments([]);
+      setTenderedAmount(''); // NEW: Reset tendered amount
+      setChangeAmount(0);    // NEW: Reset change amount
+      localStorage.removeItem('cartItems'); // Clear cart from localStorage
     } catch (err) {
       console.error('Order error:', err.response?.data || err.message);
-      setError(err.response?.data?.message || 'Error placing order');
+      const errorMessage = err.response?.data?.message || 
+                          err.response?.data?.errors?.join(', ') || 
+                          'Error placing order';
+      setError(errorMessage);
       setTimeout(() => setError(''), 5000);
     } finally {
       setIsLoading(false);
@@ -325,6 +368,13 @@ export default function OrderPage() {
               border: 2px solid #000;
               margin-top: 15px;
             }
+            .payment-info {
+              background: #e9ecef;
+              padding: 10px;
+              border-radius: 8px;
+              margin: 10px 0;
+              border: 1px solid #dee2e6;
+            }
             .thank-you {
               text-align: center;
               font-style: italic;
@@ -378,12 +428,14 @@ export default function OrderPage() {
     setLastOrder(null);
     setItems([{ category: '', name: '', quantity: 1, price: 0 }]);
     setAdditionalPayments([]);
-    setCartItems([]);
+    setTenderedAmount('');
+    setChangeAmount(0);
+    // Note: Don't clear cartItems here to preserve cart for future orders
   };
 
   // Safe function to format amount with fallback
   const formatAmount = (amount) => {
-    return amount ? amount.toFixed(2) : '0.00';
+    return amount ? parseFloat(amount).toFixed(2) : '0.00';
   };
 
   // Get unique categories from menu items
@@ -426,6 +478,23 @@ export default function OrderPage() {
             {isOrderPlaced ? 'Order Receipt' : 'Order Page'}
           </h2>
         </div>
+        
+        {/* Cart Items Count - Always visible */}
+        {!isOrderPlaced && cartItems.length > 0 && (
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '8px',
+            background: '#790707ff',
+            padding: '8px 16px',
+            borderRadius: '20px',
+            color: 'white',
+            fontWeight: 'bold'
+          }}>
+            <FaShoppingCart />
+            <span>Cart: {cartItems.length} items</span>
+          </div>
+        )}
         
         {/* Back to Order Button when in receipt view */}
         {isOrderPlaced && (
@@ -501,7 +570,7 @@ export default function OrderPage() {
       {/* ORDER FORM SECTION - Only show when no order is placed */}
       {!isOrderPlaced && (
         <>
-          {/* Cart Items Section */}
+          {/* Cart Items Section - Always show if there are cart items */}
           {cartItems.length > 0 && (
             <div style={{ 
               background: '#ca9a9aff', 
@@ -671,7 +740,7 @@ export default function OrderPage() {
               Customer Order Entry
             </h3>
 
-            {/* Order Type */}
+            {/* Order Type - FIXED OPTION VALUES */}
             <div style={{ marginBottom: 16 }}>
               <label style={{ fontWeight: '600', color: '#0f060aff', marginRight: 8 }}><strong>Order Type:</strong></label>
               <select
@@ -686,9 +755,9 @@ export default function OrderPage() {
                   fontWeight: '500'
                 }}
               >
-                <option value="dine-in">Dine-In</option>
-                <option value="take-out">Take-Out</option>
-                <option value="delivery">Delivery</option>
+                <option value="Dine-in">Dine-in</option>
+                <option value="Take-out">Take-out</option>
+                <option value="Delivery">Delivery</option>
               </select>
             </div>
 
@@ -834,7 +903,7 @@ export default function OrderPage() {
             </button>
 
             {/* Additional Payments Section - Only show for take-out orders */}
-            {orderType === 'take-out' && (
+            {orderType === 'Take-out' && (
               <div style={{ marginBottom: 16 }}>
                 <h4 style={{ 
                   color: '#181717ff', 
@@ -927,6 +996,84 @@ export default function OrderPage() {
                 </button>
               </div>
             )}
+
+            {/* NEW: Payment Information Section */}
+            <div style={{ 
+              marginBottom: 16,
+              padding: '16px',
+              backgroundColor: '#ddb7bfff',
+              borderRadius: 12,
+              border: '2px solid #925a65ff'
+            }}>
+              <h4 style={{ 
+                color: '#181717ff', 
+                marginBottom: 12,
+                fontFamily: 'Arial Rounded MT Bold, sans-serif'
+              }}>
+                Payment Information
+              </h4>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', alignItems: 'center' }}>
+                <div>
+                  <label style={{ fontWeight: '600', color: '#0f060aff', display: 'block', marginBottom: '4px' }}>
+                    Tendered Amount:
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={tenderedAmount}
+                    onChange={(e) => setTenderedAmount(e.target.value)}
+                    style={{ 
+                      width: '100%', 
+                      padding: '10px', 
+                      borderRadius: 12, 
+                      border: '2px solid #754752ff', 
+                      background: '#f8f9fa',
+                      color: '#080708ff',
+                      textAlign: 'right',
+                      fontSize: '16px',
+                      fontWeight: 'bold'
+                    }}
+                  />
+                </div>
+                
+                <div>
+                  <label style={{ fontWeight: '600', color: '#0f060aff', display: 'block', marginBottom: '4px' }}>
+                    Change:
+                  </label>
+                  <div style={{ 
+                    width: '100%', 
+                    padding: '10px', 
+                    borderRadius: 12, 
+                    border: '2px solid #28a745', 
+                    background: '#d4edda',
+                    color: '#155724',
+                    textAlign: 'right',
+                    fontSize: '16px',
+                    fontWeight: 'bold'
+                  }}>
+                    ₱{formatAmount(changeAmount)}
+                  </div>
+                </div>
+              </div>
+              
+              {tenderedAmount && parseFloat(tenderedAmount) < totalAmount && (
+                <div style={{ 
+                  marginTop: '8px', 
+                  padding: '8px', 
+                  background: '#f8d7da', 
+                  color: '#721c24', 
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  textAlign: 'center',
+                  border: '1px solid #f5c6cb'
+                }}>
+                  ⚠️ Tendered amount is less than total amount
+                </div>
+              )}
+            </div>
 
             {/* Total Display - Enhanced visibility */}
             <div style={{ 
@@ -1173,6 +1320,39 @@ export default function OrderPage() {
                       </div>
                     </div>
                   ))}
+                </div>
+              </div>
+            )}
+            
+            {/* NEW: Payment Information on Receipt */}
+            {(lastOrder.tenderedAmount || lastOrder.changeAmount) && (
+              <div className="payment-info">
+                <h4 style={{ 
+                  margin: '0 0 8px 0', 
+                  color: '#000',
+                  fontSize: '14px',
+                  borderBottom: '1px solid #ddd',
+                  paddingBottom: '3px'
+                }}>
+                  PAYMENT:
+                </h4>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '12px', color: '#333' }}>Tendered:</span>
+                  <span style={{ fontSize: '12px', color: '#333', fontWeight: 'bold' }}>
+                    ₱{formatAmount(lastOrder.tenderedAmount)}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '12px', color: '#333' }}>Total:</span>
+                  <span style={{ fontSize: '12px', color: '#333', fontWeight: 'bold' }}>
+                    ₱{formatAmount(lastOrder.totalAmount)}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #ddd', paddingTop: '4px' }}>
+                  <span style={{ fontSize: '13px', color: '#000', fontWeight: 'bold' }}>Change:</span>
+                  <span style={{ fontSize: '13px', color: '#000', fontWeight: 'bold' }}>
+                    ₱{formatAmount(lastOrder.changeAmount)}
+                  </span>
                 </div>
               </div>
             )}

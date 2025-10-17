@@ -11,6 +11,7 @@ import ProfilePage from './pages/ProfilePage';
 import SettingPage from './pages/SettingPage';
 import HomePage from './pages/HomePage';
 import AboutPage from './pages/AboutPage';
+import POSAnalytics from './pages/POSAnalytics';
 
 const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
@@ -64,6 +65,8 @@ export default function App() {
           <Route path="/settingpage" element={<Protected><SettingPage /></Protected>} />
           <Route path="/home" element={<Protected><HomePage /></Protected>} />
           <Route path="/about" element={<Protected><AboutPage /></Protected>} />
+          <Route path="/analytic" element={<Protected><POSAnalytics /></Protected>} />
+
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />

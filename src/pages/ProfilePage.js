@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import { useAuth } from "../App";
 import { useNavigate } from "react-router-dom";
@@ -25,11 +25,84 @@ export default function ProfilePage() {
     headers: token ? { Authorization: `Bearer ${token}` } : {} 
   });
 
-  // Debugging
+  // Improved function to get profile image URL with caching support
+  const getProfileImageUrl = useCallback((profileImagePath = null) => {
+    const imageToUse = profileImagePath || user?.profileImage;
+    
+    // If we have a new image selected, show preview
+    if (imagePreview && !profileImagePath) {
+      return imagePreview;
+    }
+    
+    // If we have a profile image from the server
+    if (imageToUse) {
+      // Check if it's already a full URL
+      if (imageToUse.startsWith('http')) {
+        return imageToUse;
+      }
+      
+      // Handle different backend response formats
+      let imagePath = imageToUse;
+      
+      // Remove any leading slash to avoid double slashes in URL
+      if (imagePath.startsWith('/')) {
+        imagePath = imagePath.substring(1);
+      }
+      
+      // Ensure the path starts with 'uploads/'
+      if (!imagePath.startsWith('uploads/')) {
+        imagePath = `uploads/${imagePath}`;
+      }
+      
+      // Use the same baseURL from axios instance
+      return `${process.env.REACT_APP_API_URL}/${imagePath}`;
+    }
+    
+    // Default profile image
+    return "/profile.jpg";
+  }, [user?.profileImage, imagePreview]);
+
+  // Load cached profile image
+  const loadCachedProfileImage = useCallback(async () => {
+    try {
+      const cache = await caches.open('profile-images');
+      
+      // Try multiple cache keys to find the profile image
+      const cacheKeys = [
+        `${process.env.REACT_APP_API_URL}/uploads/profile-${user?.id || user?._id}`,
+        getProfileImageUrl(),
+        ...(user?.profileImage ? [getProfileImageUrl(user.profileImage)] : [])
+      ];
+      
+      for (const cacheKey of cacheKeys) {
+        const cachedResponse = await cache.match(cacheKey);
+        if (cachedResponse) {
+          const blob = await cachedResponse.blob();
+          const cachedUrl = URL.createObjectURL(blob);
+          setImagePreview(cachedUrl);
+          console.log('Loaded profile image from cache:', cacheKey);
+          break;
+        }
+      }
+    } catch (err) {
+      console.log('Profile image cache load error:', err);
+    }
+  }, [user?.id, user?._id, user?.profileImage, getProfileImageUrl]);
+
+  // Debugging and initial load
   useEffect(() => {
     console.log("User object:", user);
     console.log("User profileImage:", user?.profileImage);
-  }, [user]);
+    
+    // Set initial image preview from user's profile image
+    if (user?.profileImage && !imagePreview) {
+      const initialImageUrl = getProfileImageUrl();
+      setImagePreview(initialImageUrl);
+    }
+    
+    // Load cached profile image if available
+    loadCachedProfileImage();
+  }, [user, getProfileImageUrl, loadCachedProfileImage, imagePreview]);
 
   const handleFile = (e) => {
     if (e.target.files && e.target.files[0]) {
@@ -39,6 +112,7 @@ export default function ProfilePage() {
       // Create a preview URL for the selected image
       const previewUrl = URL.createObjectURL(file);
       setImagePreview(previewUrl);
+      setMsg(""); // Clear any previous messages
     }
   };
 
@@ -56,15 +130,46 @@ export default function ProfilePage() {
           "Content-Type": "multipart/form-data",
         },
       });
+      
+      // Cache the new profile image
+      if (profileImage && res.data.user?.profileImage) {
+        await cacheProfileImage(res.data.user.profileImage);
+      }
+      
       setUser(res.data.user);
       setMsg("✅ Profile updated successfully!");
       setIsEditingUsername(false);
-      setImagePreview(null); // Clear preview after successful upload
+      
+      // Update the image preview with the new server image URL
+      if (res.data.user?.profileImage) {
+        const newImageUrl = getProfileImageUrl(res.data.user.profileImage);
+        setImagePreview(newImageUrl);
+      }
+      
     } catch (e) {
       console.log("Profile update error:", e.response?.data);
       setMsg(e.response?.data?.message || "❌ Failed to update profile");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Cache profile image for offline use
+  const cacheProfileImage = async (imageUrl) => {
+    try {
+      const cache = await caches.open('profile-images');
+      const fullImageUrl = getProfileImageUrl(imageUrl);
+      
+      // Cache the image
+      await cache.add(fullImageUrl);
+      console.log('Profile image cached successfully:', fullImageUrl);
+      
+      // Also cache with user-specific key for easier retrieval
+      const userCacheKey = `${process.env.REACT_APP_API_URL}/uploads/profile-${user?.id || user?._id}`;
+      await cache.add(userCacheKey);
+      
+    } catch (err) {
+      console.log('Profile image caching failed:', err);
     }
   };
 
@@ -98,35 +203,93 @@ export default function ProfilePage() {
     }
   };
 
-  // Construct the image URL - Fixed version
-  const getProfileImageUrl = () => {
-    // If we have a new image selected, show preview
-    if (imagePreview) {
-      return imagePreview;
-    }
+  // Improved image error handling with caching fallback
+  const handleImageError = async (e) => {
+    console.log("Profile image failed to load:", e.target.src);
     
-    // If we have a profile image from the server
-    if (user?.profileImage) {
-      // Check if it's already a full URL
-      if (user.profileImage.startsWith('http')) {
-        return user.profileImage;
+    try {
+      // Try to get from cache
+      const cache = await caches.open('profile-images');
+      const cachedResponse = await cache.match(e.target.src);
+      
+      if (cachedResponse) {
+        const blob = await cachedResponse.blob();
+        const cachedUrl = URL.createObjectURL(blob);
+        e.target.src = cachedUrl;
+        console.log('Loaded profile image from cache after error');
+        return;
       }
       
-      // Handle different backend response formats
-      let imagePath = user.profileImage;
-      
-      // Remove any leading slash to avoid double slashes in URL
-      if (imagePath.startsWith('/')) {
-        imagePath = imagePath.substring(1);
+      // If cache fails, try alternative URL constructions
+      if (user?.profileImage) {
+        const baseUrl = process.env.REACT_APP_API_URL;
+        const pathVariations = [
+          user.profileImage,
+          user.profileImage.startsWith('/') ? user.profileImage.slice(1) : `/${user.profileImage}`,
+          user.profileImage.startsWith('uploads/') ? user.profileImage : `uploads/${user.profileImage}`,
+          user.profileImage.startsWith('/uploads/') ? user.profileImage.slice(1) : user.profileImage
+        ];
+        
+        for (const variation of pathVariations) {
+          const testUrl = `${baseUrl}/${variation}`;
+          if (testUrl !== e.target.src) {
+            const testImg = new Image();
+            testImg.onload = () => {
+              console.log('Alternative URL works! Using:', testUrl);
+              e.target.src = testUrl;
+              // Cache this working URL
+              cache.add(testUrl);
+            };
+            testImg.onerror = () => {
+              console.log('Alternative URL failed:', testUrl);
+            };
+            testImg.src = testUrl;
+            break;
+          }
+        }
       }
-      
-      // Use the same baseURL from axios instance
-      return `${process.env.REACT_APP_API_URL}/${imagePath}`;
+    } catch (err) {
+      console.log("All profile image loading attempts failed");
+      // Fallback to default image
+      e.target.src = "/profile.jpg";
     }
-    
-    // Default profile image
-    return "/profile.jpg";
   };
+
+  // Preload and cache profile image when component mounts
+  useEffect(() => {
+    const preloadProfileImage = async () => {
+      if (user?.profileImage) {
+        try {
+          const imageUrl = getProfileImageUrl();
+          const cache = await caches.open('profile-images');
+          
+          // Check if image is already cached
+          const cached = await cache.match(imageUrl);
+          if (!cached) {
+            // Preload and cache the image
+            const response = await fetch(imageUrl, { mode: 'cors' });
+            if (response.ok) {
+              await cache.put(imageUrl, response);
+              console.log('Profile image preloaded and cached:', imageUrl);
+            }
+          }
+        } catch (err) {
+          console.log('Profile image preloading failed:', err);
+        }
+      }
+    };
+
+    preloadProfileImage();
+  }, [user?.profileImage, getProfileImageUrl]);
+
+  // Clear image preview when component unmounts to avoid memory leaks
+  useEffect(() => {
+    return () => {
+      if (imagePreview && imagePreview.startsWith('blob:')) {
+        URL.revokeObjectURL(imagePreview);
+      }
+    };
+  }, [imagePreview]);
 
   // Navigate to End of Day History
   const navigateToEndOfDayHistory = () => {
@@ -266,10 +429,7 @@ export default function ProfilePage() {
             <img
               src={getProfileImageUrl()}
               alt="Profile"
-              onError={(e) => {
-                // If image fails to load, show default
-                e.target.src = "/profile.jpg";
-              }}
+              onError={handleImageError}
               style={{
                 width: 150, // Increased from 120 to 150
                 height: 150, // Increased from 120 to 150
@@ -309,7 +469,13 @@ export default function ProfilePage() {
           >
             <FaCamera color="#fff" size={16} /> {/* Slightly larger icon */}
           </label>
-          <input id="profileUpload" type="file" accept="image/*" onChange={handleFile} style={{ display: "none" }} />
+          <input 
+            id="profileUpload" 
+            type="file" 
+            accept="image/*" 
+            onChange={handleFile} 
+            style={{ display: "none" }} 
+          />
         </div>
 
         {/* Username */}
