@@ -15,7 +15,6 @@ export default function HomePage() {
   const [cart, setCart] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [availabilityFilter, setAvailabilityFilter] = useState('all');
-  const [imageCache, setImageCache] = useState(new Map()); // Local image cache
 
   // Create axios instance with baseURL
   const api = axios.create({
@@ -25,65 +24,143 @@ export default function HomePage() {
 
   const categories = ['All', 'Drinks', 'Breakfast', 'Dessert', 'Lunch', 'Dinner', 'Snack'];
 
-  // Improved function to get food item image URL
-  const getItemImageUrl = useCallback((item) => {
-    if (!item?.imageUrl) return null;
-
+  // Improved function to get food item image URL - similar to MenuPage
+  const getImageUrl = useCallback((imageUrl) => {
+    if (!imageUrl) return null;
+    
     // If it's already a full URL, return as is
-    if (item.imageUrl.startsWith('http')) {
-      return item.imageUrl;
+    if (imageUrl.startsWith('http')) {
+      return imageUrl;
     }
-
+    
     const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
     
-    // Handle different path formats that might come from the backend
-    let imagePath = item.imageUrl;
-
-    // Remove leading slash if present
+    // Handle different path formats
+    let imagePath = imageUrl;
+    
+    // Remove leading slash if present to avoid double slashes
     if (imagePath.startsWith('/')) {
-      imagePath = imagePath.substring(1);
+      imagePath = imagePath.slice(1);
     }
-
-    // Ensure the path starts with 'uploads/'
-    if (!imagePath.startsWith('uploads/')) {
-      imagePath = `uploads/${imagePath}`;
+    
+    // Remove 'uploads/' prefix if already present to avoid duplication
+    if (imagePath.startsWith('uploads/')) {
+      imagePath = imagePath.replace('uploads/', '');
     }
-
-    // Construct the full URL
-    const fullUrl = `${baseUrl}/${imagePath}`;
+    
+    // Construct the full URL - ensure proper path structure
+    const fullUrl = `${baseUrl}/uploads/${imagePath}`;
+    
     return fullUrl;
   }, []);
 
-  // Preload and cache images
-  const preloadImages = useCallback(async (items) => {
-    const newCache = new Map(imageCache);
+  // Get cached image URL with fallback - similar to MenuPage
+  const getCachedImageUrl = async (imageUrl) => {
+    if (!imageUrl) return null;
     
-    for (const item of items) {
-      if (item.imageUrl && !newCache.has(item._id)) {
-        const imageUrl = getItemImageUrl(item);
-        if (imageUrl) {
-          try {
-            // Try to load the image
-            const img = new Image();
-            img.src = imageUrl;
+    const fullUrl = getImageUrl(imageUrl);
+    
+    try {
+      const imageCache = await caches.open('menu-images');
+      const cachedResponse = await imageCache.match(fullUrl);
+      
+      if (cachedResponse) {
+        return URL.createObjectURL(await cachedResponse.blob());
+      }
+    } catch (err) {
+      console.log('Cache access error:', err);
+    }
+    
+    return fullUrl;
+  };
+
+  // Improved image error handling with caching - similar to MenuPage
+  const handleImageError = async (e, item) => {
+    console.log(`HomePage - Image failed to load:`, e.target.src);
+    console.log(`Item: ${item.name}`);
+    
+    try {
+      // Try to get from cache first
+      const cachedUrl = await getCachedImageUrl(item.imageUrl);
+      if (cachedUrl && cachedUrl !== e.target.src) {
+        console.log('HomePage - Trying cached URL:', cachedUrl);
+        e.target.src = cachedUrl;
+        return;
+      }
+      
+      // If cache fails, try alternative URL construction
+      const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+      let testPath = item.imageUrl;
+      
+      // Try different path variations
+      const pathVariations = [
+        testPath,
+        testPath.startsWith('/') ? testPath.slice(1) : `/${testPath}`,
+        testPath.startsWith('uploads/') ? testPath : `uploads/${testPath}`,
+        testPath.startsWith('/uploads/') ? testPath.slice(1) : testPath
+      ];
+      
+      for (const variation of pathVariations) {
+        const testUrl = `${baseUrl}/${variation}`;
+        if (testUrl !== e.target.src) {
+          console.log('HomePage - Testing alternative URL:', testUrl);
+          
+          const testImg = new Image();
+          testImg.onload = () => {
+            console.log('HomePage - Alternative URL works!');
+            e.target.src = testUrl;
             
-            img.onload = () => {
-              console.log('Image loaded successfully:', imageUrl);
-              newCache.set(item._id, imageUrl);
-              setImageCache(new Map(newCache));
-            };
-            
-            img.onerror = () => {
-              console.log('Failed to load image:', imageUrl);
-              // Don't cache failed images
-            };
-          } catch (error) {
-            console.log('Error loading image:', error);
-          }
+            // Cache this working URL
+            caches.open('menu-images').then(cache => {
+              fetch(testUrl).then(response => {
+                if (response.ok) {
+                  cache.put(testUrl, response);
+                }
+              });
+            });
+          };
+          testImg.onerror = () => {
+            console.log('HomePage - Alternative URL failed:', testUrl);
+          };
+          testImg.src = testUrl;
+          break;
         }
       }
+    } catch (err) {
+      console.log('HomePage - All image loading attempts failed');
+      // Show fallback
+      e.target.style.display = 'none';
+      const fallback = e.target.nextSibling;
+      if (fallback) {
+        fallback.style.display = 'flex';
+      }
     }
-  }, [getItemImageUrl, imageCache]);
+  };
+
+  // Preload images when component mounts - similar to MenuPage
+  const preloadImages = useCallback(async (items) => {
+    const imageCache = await caches.open('menu-images');
+    
+    items.forEach(async (item) => {
+      if (item.imageUrl) {
+        const imageUrl = getImageUrl(item.imageUrl);
+        try {
+          // Check if image is already cached
+          const cached = await imageCache.match(imageUrl);
+          if (!cached) {
+            // Preload and cache the image
+            const response = await fetch(imageUrl, { mode: 'cors' });
+            if (response.ok) {
+              await imageCache.put(imageUrl, response);
+              console.log('Preloaded and cached image:', imageUrl);
+            }
+          }
+        } catch (err) {
+          console.log('Preloading failed for:', imageUrl, err);
+        }
+      }
+    });
+  }, [getImageUrl]);
 
   const loadData = useCallback(async () => {
     try {
@@ -214,78 +291,6 @@ export default function HomePage() {
     }
     return '/profile.jpg';
   }, [user?.profileImage]);
-
-  // Improved image error handling with multiple fallbacks
-  const handleImageError = (e, item, type = 'food') => {
-    console.log(`Image error for ${type}:`, e.target.src);
-    
-    // Hide the broken image
-    e.target.style.display = 'none';
-    
-    // Show fallback
-    const fallback = e.target.nextSibling;
-    if (fallback && fallback.style) {
-      fallback.style.display = 'flex';
-    }
-
-    // Try to get from cache
-    const cachedUrl = imageCache.get(item._id);
-    if (cachedUrl && cachedUrl !== e.target.src) {
-      console.log('Trying cached URL:', cachedUrl);
-      e.target.src = cachedUrl;
-      e.target.style.display = 'block';
-      if (fallback) fallback.style.display = 'none';
-      return;
-    }
-
-    // Try alternative URL constructions
-    if (type === 'food' && item.imageUrl) {
-      const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-      const pathVariations = [
-        item.imageUrl,
-        item.imageUrl.startsWith('/') ? item.imageUrl.slice(1) : `/${item.imageUrl}`,
-        item.imageUrl.startsWith('uploads/') ? item.imageUrl : `uploads/${item.imageUrl}`,
-        item.imageUrl.startsWith('/uploads/') ? item.imageUrl.slice(1) : item.imageUrl
-      ];
-
-      let currentIndex = 0;
-      
-      const tryNextVariation = () => {
-        if (currentIndex >= pathVariations.length) return;
-        
-        const variation = pathVariations[currentIndex];
-        const testUrl = `${baseUrl}/${variation}`;
-        
-        if (testUrl !== e.target.src) {
-          console.log('Testing alternative URL:', testUrl);
-          
-          const testImg = new Image();
-          testImg.onload = () => {
-            console.log('Alternative URL works!');
-            e.target.src = testUrl;
-            e.target.style.display = 'block';
-            if (fallback) fallback.style.display = 'none';
-            
-            // Cache this working URL
-            const newCache = new Map(imageCache);
-            newCache.set(item._id, testUrl);
-            setImageCache(newCache);
-          };
-          testImg.onerror = () => {
-            console.log('Alternative URL failed:', testUrl);
-            currentIndex++;
-            tryNextVariation();
-          };
-          testImg.src = testUrl;
-        } else {
-          currentIndex++;
-          tryNextVariation();
-        }
-      };
-      
-      tryNextVariation();
-    }
-  };
 
   // Format date to show how recent the item is
   const getTimeAgo = (dateString) => {
@@ -672,7 +677,7 @@ export default function HomePage() {
         padding: '0 4px'
       }}>
         {filteredItems.map(it => {
-          const itemImageUrl = getItemImageUrl(it);
+          const itemImageUrl = getImageUrl(it.imageUrl);
           const isOutOfStock = (it.stock || 0) <= 0;
           
           return (
@@ -720,7 +725,7 @@ export default function HomePage() {
                         objectFit: 'cover',
                         filter: !it.isAvailable || isOutOfStock ? 'grayscale(50%)' : 'none'
                       }} 
-                      onError={(e) => handleImageError(e, it, 'food')}
+                      onError={(e) => handleImageError(e, it)}
                       loading="lazy"
                     />
                     {/* Fallback for food image */}
@@ -1017,7 +1022,6 @@ export default function HomePage() {
             gap: '4px'
           }}
         >
-        
           <FaBox size={20} color="#374151" />
           <span style={{ fontSize: '10px', color: '#374151' }}>Inventory</span>
         </button>
