@@ -10,5 +10,5 @@ services:
         value: https://resto-backend-1.onrender.com
     routes:
       - type: rewrite
-        source: /*
+        source: /**
         destination: /index.html
