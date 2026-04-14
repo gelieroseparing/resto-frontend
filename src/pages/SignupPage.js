@@ -182,9 +182,9 @@ export default function SignupPage() {
             onChange={handle}
             disabled={loading}
           >
-            <option value="cashier">Cashier</option>
-            <option value="chef">Chef</option>
-            <option value="staff">Staff</option>
+            <option value="Cashier">Cashier</option>
+            <option value="Chef">Chef</option>
+            <option value="Staff">Staff</option>
           </select>
           <button
             style={buttonStyle}
